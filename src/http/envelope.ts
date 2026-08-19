@@ -53,6 +53,7 @@ export function sendOk<T>(
     creditsCharged: number;
     upstreamMs: number;
     requestId?: string;
+    nextCursor?: string | null;
   },
 ): FastifyReply {
   const body: Ok<T> = {
@@ -62,6 +63,7 @@ export function sendOk<T>(
       creditsCharged: meta.creditsCharged,
       requestId: meta.requestId ?? newRequestId(),
       upstreamMs: meta.upstreamMs,
+      ...(meta.nextCursor !== undefined ? { nextCursor: meta.nextCursor } : {}),
     },
   };
   return reply.status(200).send(body);

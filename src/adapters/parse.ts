@@ -1,8 +1,10 @@
 import { toMarkdown } from "../markdown.js";
 import type {
+  AdapterVendor,
   EmploymentType,
   Job,
   JobLocation,
+  JobSummary,
   Salary,
   SalaryPeriod,
   Source,
@@ -600,7 +602,7 @@ export function innerHtml(html: string, idOrClass: { id?: string; className?: st
 }
 
 export function buildJob(input: {
-  source: "greenhouse" | "ashby";
+  source: AdapterVendor;
   sourceJobId: string;
   title: string;
   companyName: string;
@@ -628,6 +630,40 @@ export function buildJob(input: {
     postedAt: input.postedAt,
     closed: false,
     fetchedAt: input.fetchedAt,
+  };
+}
+
+export function buildJobSummary(input: {
+  source: AdapterVendor;
+  sourceJobId: string;
+  title: string;
+  companyName: string;
+  locations: JobLocation[];
+  remote: boolean | null;
+  applyUrl: string;
+}): JobSummary {
+  return {
+    id: makeJobId(input.source, input.sourceJobId),
+    title: input.title.trim(),
+    company: { name: input.companyName.trim(), id: null },
+    locations: input.locations,
+    remote: input.remote,
+    applyUrl: input.applyUrl,
+    closed: false,
+    hasFullDescription: false,
+  };
+}
+
+export function jobToSummary(job: Job): JobSummary {
+  return {
+    id: job.id,
+    title: job.title,
+    company: job.company,
+    locations: job.locations,
+    remote: job.remote,
+    applyUrl: job.applyUrl,
+    closed: job.closed,
+    hasFullDescription: false,
   };
 }
 

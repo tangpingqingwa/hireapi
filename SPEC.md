@@ -97,6 +97,8 @@ Query: `cursor`. Returns same job objects (description may be stub until detail 
 
 Preferred v1: list returns summaries (title, location, applyUrl, id); full Markdown on `by-url` only. Cheaper and faster.
 
+v1 `GET /v1/boards/by-url` returns `JobSummary[]` in `data` (`hasFullDescription: false`). `meta.nextCursor` is set when another page exists. Full Markdown is only on `GET /v1/jobs/by-url`.
+
 ### 4.3 `GET /v1/companies/{id}/jobs`
 
 **Credits:** 1 / page. `id` is our company id created when a board is first ingested.
@@ -118,8 +120,8 @@ v1 search = our ingested boards, **not** a live Indeed scrape. Homepage must not
 When a known job URL 404s or the board omits it:
 
 - Record `closed: true`, `closedAt`.
-- `by-url` returns 404 `job_closed` **or** 200 with `closed: true` (pick **200 + closed** so monitors do not look like errors). Document it.
-- Do not keep serving old description as if open.
+- `by-url` returns **200** with `closed: true` when we already ingested the posting (SPEC pick so monitors are not false-alerted as transport errors). Unknown never-seen URLs that 404 still map to `job_closed`.
+- Do not keep serving old description as if open. Closed rows persist `closed_at` and clear `descriptionMarkdown`.
 
 Cache open jobs 24h or until closed.
 

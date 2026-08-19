@@ -45,6 +45,7 @@ export type Ok<T> = {
     creditsCharged: number;
     requestId: string;
     upstreamMs: number;
+    nextCursor?: string | null;
   };
 };
 

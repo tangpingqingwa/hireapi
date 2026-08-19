@@ -41,6 +41,19 @@ if [[ -d src/adapters ]]; then
   if [[ -d src/adapters/lever ]] || [[ -f src/adapters/lever.ts ]]; then
     fail "Lever adapter is PR 4; do not land it here"
   fi
+  if [[ -f src/core/search.ts ]]; then
+    fail "search is PR 5; do not land it here"
+  fi
+fi
+
+if [[ -f src/core/boards.ts ]]; then
+  echo "== boards + closed lifecycle files =="
+  [[ -f src/migrations/002_jobs.sql ]] || fail "missing jobs table migration"
+  [[ -f tests/closed.test.ts ]] || fail "missing tests/closed.test.ts"
+  grep -q 'closed_at' src/migrations/002_jobs.sql || fail "jobs table must persist closed_at"
+  grep -q 'GET /v1/boards/by-url' src/http/routes/jobs.ts \
+    || grep -q 'BOARDS_BY_URL_PATH' src/http/routes/jobs.ts \
+    || fail "boards/by-url route missing"
 fi
 
 if [[ -d tests/fixtures/boards ]]; then

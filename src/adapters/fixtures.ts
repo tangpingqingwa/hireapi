@@ -88,3 +88,13 @@ export function fixtureJobUrls(
     .filter((entry) => (entry.status ?? 200) === 200)
     .map((entry) => entry.url);
 }
+
+export function fixtureBoardUrls(
+  vendor?: "greenhouse" | "ashby",
+  index = loadFixtureIndex(),
+): string[] {
+  return index.jobs
+    .filter((entry) => entry.kind === "board" && (vendor === undefined || entry.vendor === vendor))
+    .filter((entry) => (entry.status ?? 200) === 200)
+    .map((entry) => entry.url);
+}

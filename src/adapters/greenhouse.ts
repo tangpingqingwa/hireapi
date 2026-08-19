@@ -1,7 +1,10 @@
 import { HireError } from "../core/errors.js";
 import type { BoardAdapter, Job, JobSummary } from "../types.js";
 import {
+  asRecord,
+  asString,
   buildJob,
+  buildJobSummary,
   extractJsonLdJobPosting,
   findSalaryInText,
   firstMatch,
@@ -61,6 +64,155 @@ export function parseGreenhouseJobId(url: string): string | null {
   }
   const token = /[?&]token=(\d+)/.exec(url);
   return token?.[1] ?? null;
+}
+
+function greenhouseCompanyFromUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    if (parts[0] === "embed") {
+      return parsed.searchParams.get("for");
+    }
+    return parts[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function extractGreenhouseBoardJobs(html: string): unknown[] {
+  const scriptRe =
+    /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = scriptRe.exec(html)) !== null) {
+    try {
+      const parsed: unknown = JSON.parse(match[1]);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+      const rec = asRecord(parsed);
+      if (rec === null) {
+        continue;
+      }
+      if (Array.isArray(rec.jobs)) {
+        return rec.jobs;
+      }
+      if (Array.isArray(rec.itemListElement)) {
+        return rec.itemListElement;
+      }
+    } catch {
+      // try next block
+    }
+  }
+  const jobsVar = /window\.GreenhouseJobs\s*=\s*(\[[\s\S]*?\])\s*;/.exec(html);
+  if (jobsVar !== null) {
+    try {
+      const parsed: unknown = JSON.parse(jobsVar[1]);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+    } catch {
+      // fall through to HTML rows
+    }
+  }
+  return [];
+}
+
+function applyUrlFromBoardItem(item: Record<string, unknown>, boardUrl: string): string | null {
+  const direct =
+    asString(item.absolute_url) ??
+    asString(item.url) ??
+    asString(item.hostedUrl) ??
+    asString(item.applyUrl);
+  if (direct !== null) {
+    return normalizeUrl(direct) ?? direct;
+  }
+  const id = asString(item.id) ?? asString(item.jobId);
+  if (id === null || !/^\d+$/.test(id)) {
+    return null;
+  }
+  const company = greenhouseCompanyFromUrl(boardUrl);
+  if (company === null) {
+    return null;
+  }
+  return `https://boards.greenhouse.io/${company}/jobs/${id}`;
+}
+
+export function parseGreenhouseBoardHtml(html: string, boardUrl: string): JobSummary[] {
+  const company =
+    firstMatch(html, [
+      /<h1\b[^>]*class=["'][^"']*company-name[^"']*["'][^>]*>([\s\S]*?)<\/h1>/i,
+      /<span\b[^>]*class=["'][^"']*company-name[^"']*["'][^>]*>([\s\S]*?)<\/span>/i,
+    ]) ??
+    greenhouseCompanyFromUrl(boardUrl) ??
+    "Unknown";
+  const summaries: JobSummary[] = [];
+  const seen = new Set<string>();
+
+  for (const raw of extractGreenhouseBoardJobs(html)) {
+    const rec = asRecord(raw);
+    if (rec === null) {
+      continue;
+    }
+    const item = asRecord(rec.item) ?? rec;
+    const applyUrl = applyUrlFromBoardItem(item, boardUrl);
+    const sourceJobId = applyUrl !== null ? parseGreenhouseJobId(applyUrl) : null;
+    const title = asString(item.title);
+    if (applyUrl === null || sourceJobId === null || title === null) {
+      continue;
+    }
+    if (seen.has(applyUrl)) {
+      continue;
+    }
+    seen.add(applyUrl);
+    const locationRaw =
+      asString(item.location) ??
+      asString(asRecord(item.location)?.name) ??
+      null;
+    const locations = locationRaw !== null ? [parseLocation(locationRaw)] : [];
+    summaries.push(
+      buildJobSummary({
+        source: "greenhouse",
+        sourceJobId,
+        title,
+        companyName: company.replace(/^at\s+/i, ""),
+        locations,
+        remote: inferRemoteFromParts(locationRaw, title, null),
+        applyUrl,
+      }),
+    );
+  }
+
+  const rowRe =
+    /<div\b[^>]*class=["'][^"']*opening[^"']*["'][^>]*>[\s\S]*?<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>[\s\S]*?(?:<span\b[^>]*class=["'][^"']*location[^"']*["'][^>]*>([\s\S]*?)<\/span>)?/gi;
+  let row: RegExpExecArray | null;
+  while ((row = rowRe.exec(html)) !== null) {
+    const href = row[1];
+    const applyUrl = normalizeUrl(new URL(href, boardUrl).toString()) ?? href;
+    const sourceJobId = parseGreenhouseJobId(applyUrl);
+    const title = stripTags(row[2] ?? "");
+    if (sourceJobId === null || title === "") {
+      continue;
+    }
+    if (seen.has(applyUrl)) {
+      continue;
+    }
+    seen.add(applyUrl);
+    const locationRaw = row[3] !== undefined ? stripTags(row[3]) : null;
+    const locations = locationRaw !== null && locationRaw !== "" ? [parseLocation(locationRaw)] : [];
+    summaries.push(
+      buildJobSummary({
+        source: "greenhouse",
+        sourceJobId,
+        title,
+        companyName: company.replace(/^at\s+/i, ""),
+        locations,
+        remote: inferRemoteFromParts(locationRaw, title, null),
+        applyUrl,
+      }),
+    );
+  }
+
+  return summaries;
 }
 
 export function parseGreenhouseJobHtml(html: string, url: string, fetchedAt: string): Job {
@@ -142,8 +294,15 @@ export function createGreenhouseAdapter(fetchPage: FetchPage): BoardAdapter {
       }
       return parseGreenhouseJobHtml(page.body, page.url, new Date().toISOString());
     },
-    async fetchBoard(_url: string): Promise<JobSummary[]> {
-      throw new HireError("internal", "Board list is not implemented in this PR.");
+    async fetchBoard(url: string): Promise<JobSummary[]> {
+      const page = await fetchPage(url);
+      if (page.status === 404) {
+        throw new HireError("board_not_found", "Greenhouse board is gone.");
+      }
+      if (page.status >= 400) {
+        throw new HireError("upstream_blocked", `Greenhouse returned HTTP ${page.status}.`);
+      }
+      return parseGreenhouseBoardHtml(page.body, page.url);
     },
   };
 }

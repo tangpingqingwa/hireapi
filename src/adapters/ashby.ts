@@ -4,6 +4,7 @@ import {
   asRecord,
   asString,
   buildJob,
+  buildJobSummary,
   extractJsonLdJobPosting,
   findSalaryInText,
   firstMatch,
@@ -115,6 +116,122 @@ function jobRecordFromBootstrap(data: Record<string, unknown>): Record<string, u
   return null;
 }
 
+function jobListFromBootstrap(data: Record<string, unknown>): unknown[] {
+  const direct = data.jobPostings ?? data.jobs ?? data.postings;
+  if (Array.isArray(direct)) {
+    return direct;
+  }
+  const props = asRecord(data.props);
+  const pageProps = props !== null ? asRecord(props.pageProps) : null;
+  if (pageProps !== null) {
+    const nested = pageProps.jobPostings ?? pageProps.jobs ?? pageProps.postings;
+    if (Array.isArray(nested)) {
+      return nested;
+    }
+    const organization = asRecord(pageProps.organization);
+    if (organization !== null) {
+      const orgJobs = organization.jobPostings ?? organization.jobs;
+      if (Array.isArray(orgJobs)) {
+        return orgJobs;
+      }
+    }
+  }
+  return [];
+}
+
+function ashbyApplyUrl(item: Record<string, unknown>, boardUrl: string): string | null {
+  const direct =
+    asString(item.jobUrl) ??
+    asString(item.applyUrl) ??
+    asString(item.url) ??
+    asString(item.absoluteUrl);
+  if (direct !== null) {
+    return normalizeUrl(direct) ?? direct;
+  }
+  const slug = asString(item.id) ?? asString(item.slug) ?? asString(item.titleSlug);
+  const company = ashbyCompanyFromUrl(boardUrl);
+  if (slug === null || company === null) {
+    return null;
+  }
+  return `https://jobs.ashbyhq.com/${company}/${slug}`;
+}
+
+export function parseAshbyBoardHtml(html: string, boardUrl: string): JobSummary[] {
+  const company =
+    firstMatch(html, [
+      /<h1\b[^>]*>([\s\S]*?)<\/h1>/i,
+      /<div\b[^>]*class=["'][^"']*ashby-job-board-heading[^"']*["'][^>]*>([\s\S]*?)<\/div>/i,
+    ]) ??
+    ashbyCompanyFromUrl(boardUrl) ??
+    "Unknown";
+  const bootstrap = extractAshbyBootstrap(html);
+  const rows = bootstrap !== null ? jobListFromBootstrap(bootstrap) : [];
+  const summaries: JobSummary[] = [];
+  const seen = new Set<string>();
+
+  for (const raw of rows) {
+    const item = asRecord(raw);
+    if (item === null) {
+      continue;
+    }
+    const applyUrl = ashbyApplyUrl(item, boardUrl);
+    const sourceJobId = applyUrl !== null ? parseAshbyJobSlug(applyUrl) : null;
+    const title = asString(item.title);
+    if (applyUrl === null || sourceJobId === null || title === null) {
+      continue;
+    }
+    if (seen.has(applyUrl)) {
+      continue;
+    }
+    seen.add(applyUrl);
+    const locationRaw = asString(item.locationName) ?? asString(item.location);
+    const locations = locationRaw !== null ? [parseLocation(locationRaw)] : [];
+    summaries.push(
+      buildJobSummary({
+        source: "ashby",
+        sourceJobId,
+        title,
+        companyName: company,
+        locations,
+        remote: inferRemoteFromParts(locationRaw, title, null),
+        applyUrl,
+      }),
+    );
+  }
+
+  const rowRe =
+    /<a\b[^>]*class=["'][^"']*ashby-job-posting-brief[^"']*["'][^>]*href=["']([^"']+)["'][^>]*>[\s\S]*?(?:<h3\b[^>]*>([\s\S]*?)<\/h3>|<div\b[^>]*class=["'][^"']*ashby-job-posting-brief-title[^"']*["'][^>]*>([\s\S]*?)<\/div>)[\s\S]*?(?:<div\b[^>]*class=["'][^"']*ashby-job-posting-brief-location[^"']*["'][^>]*>([\s\S]*?)<\/div>)?/gi;
+  let row: RegExpExecArray | null;
+  while ((row = rowRe.exec(html)) !== null) {
+    const href = row[1];
+    const applyUrl = normalizeUrl(new URL(href, boardUrl).toString()) ?? href;
+    const sourceJobId = parseAshbyJobSlug(applyUrl);
+    const title = stripTags(row[2] ?? row[3] ?? "");
+    if (sourceJobId === null || title === "") {
+      continue;
+    }
+    if (seen.has(applyUrl)) {
+      continue;
+    }
+    seen.add(applyUrl);
+    const locationRaw = row[4] !== undefined ? stripTags(row[4]) : null;
+    const locations = locationRaw !== null && locationRaw !== "" ? [parseLocation(locationRaw)] : [];
+    summaries.push(
+      buildJobSummary({
+        source: "ashby",
+        sourceJobId,
+        title,
+        companyName: company,
+        locations,
+        remote: inferRemoteFromParts(locationRaw, title, null),
+        applyUrl,
+      }),
+    );
+  }
+
+  return summaries;
+}
+
 export function parseAshbyJobHtml(html: string, url: string, fetchedAt: string): Job {
   const sourceJobId = parseAshbyJobSlug(url);
   if (sourceJobId === null) {
@@ -210,8 +327,15 @@ export function createAshbyAdapter(fetchPage: FetchPage): BoardAdapter {
       }
       return parseAshbyJobHtml(page.body, page.url, new Date().toISOString());
     },
-    async fetchBoard(_url: string): Promise<JobSummary[]> {
-      throw new HireError("internal", "Board list is not implemented in this PR.");
+    async fetchBoard(url: string): Promise<JobSummary[]> {
+      const page = await fetchPage(url);
+      if (page.status === 404) {
+        throw new HireError("board_not_found", "Ashby board is gone.");
+      }
+      if (page.status >= 400) {
+        throw new HireError("upstream_blocked", `Ashby returned HTTP ${page.status}.`);
+      }
+      return parseAshbyBoardHtml(page.body, page.url);
     },
   };
 }
