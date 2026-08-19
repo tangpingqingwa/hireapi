@@ -1,5 +1,7 @@
 # HireAPI
 
+Build contract: [SPEC.md](./SPEC.md).
+
 Public job posts from Indeed, LinkedIn job pages, and modern ATS boards (Greenhouse, Ashby, Lever) in one schema.
 
 There is no honest self-serve “jobs API” for builders who are not a job board partner.
