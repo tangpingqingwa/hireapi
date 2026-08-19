@@ -22,6 +22,10 @@ export type FixtureIndex = {
   jobs: FixtureIndexEntry[];
 };
 
+function fixtureBodyPath(file: string): string {
+  return join(FIXTURES_DIR, file);
+}
+
 export function loadFixtureIndex(): FixtureIndex {
   const raw = readFileSync(join(FIXTURES_DIR, "index.json"), "utf8");
   return JSON.parse(raw) as FixtureIndex;
@@ -70,10 +74,11 @@ export function createFixtureFetchPage(index = loadFixtureIndex()): FetchPage {
         "No fixture for this URL (live Greenhouse/Ashby/Lever is disabled).",
       );
     }
-    const body = readFileSync(join(FIXTURES_DIR, match.file), "utf8");
+    const status = match.status ?? 200;
+    const body = status === 404 && match.file === "" ? "" : readFileSync(fixtureBodyPath(match.file), "utf8");
     return {
       url: match.url,
-      status: match.status ?? 200,
+      status,
       body,
     };
   };
@@ -85,6 +90,16 @@ export function fixtureJobUrls(
 ): string[] {
   return index.jobs
     .filter((entry) => entry.kind === "job" && (vendor === undefined || entry.vendor === vendor))
+    .filter((entry) => (entry.status ?? 200) === 200)
+    .map((entry) => entry.url);
+}
+
+export function fixtureBoardUrls(
+  vendor?: "greenhouse" | "ashby",
+  index = loadFixtureIndex(),
+): string[] {
+  return index.jobs
+    .filter((entry) => entry.kind === "board" && (vendor === undefined || entry.vendor === vendor))
     .filter((entry) => (entry.status ?? 200) === 200)
     .map((entry) => entry.url);
 }

@@ -1,51 +1,39 @@
-import { createAshbyAdapter } from "../adapters/ashby.js";
-import { createFixtureFetchPage } from "../adapters/fixtures.js";
-import { createGreenhouseAdapter } from "../adapters/greenhouse.js";
-import type { FetchPage } from "../adapters/transport.js";
+import { inferBoardUrl } from "../adapters/parse.js";
+import type { HireApiDb } from "../db.js";
 import type { BoardAdapter, Job } from "../types.js";
 import { HireError } from "./errors.js";
+import { adapterForJobUrl, defaultAdapters, parseRequestedUrl } from "./router.js";
+import {
+  closeStoredJob,
+  findStoredJob,
+  isFreshOpenFullJob,
+  upsertFullJob,
+} from "./store.js";
 
-export function defaultAdapters(fetchPage: FetchPage = createFixtureFetchPage()): BoardAdapter[] {
-  return [createGreenhouseAdapter(fetchPage), createAshbyAdapter(fetchPage)];
-}
+export { adapterForJobUrl, defaultAdapters } from "./router.js";
 
-export function adapterForJobUrl(
-  url: string,
-  adapters: readonly BoardAdapter[] = defaultAdapters(),
-): BoardAdapter | null {
-  for (const adapter of adapters) {
-    if (adapter.matchJobUrl(url)) {
-      return adapter;
-    }
-  }
-  return null;
+export type GetJobByUrlOptions = {
+  adapters?: readonly BoardAdapter[];
+  db?: HireApiDb;
+  now?: Date;
+};
+
+function isAdapterList(
+  value: readonly BoardAdapter[] | GetJobByUrlOptions,
+): value is readonly BoardAdapter[] {
+  return Array.isArray(value);
 }
 
 export async function getJobByUrl(
   url: string,
-  adapters: readonly BoardAdapter[] = defaultAdapters(),
+  adaptersOrOptions: readonly BoardAdapter[] | GetJobByUrlOptions = defaultAdapters(),
 ): Promise<Job> {
-  const trimmed = url.trim();
-  if (trimmed === "") {
-    throw new HireError("invalid_request", "Query parameter url is required.");
-  }
-  let parsed: URL;
-  try {
-    parsed = new URL(trimmed);
-  } catch {
-    throw new HireError("invalid_request", "Query parameter url must be an absolute URL.");
-  }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new HireError("invalid_request", "Query parameter url must be http or https.");
-  }
-  const host = parsed.hostname.toLowerCase();
-  if (
-    host.includes("linkedin.com") ||
-    host.includes("indeed.com") ||
-    host.includes("indeed.")
-  ) {
-    throw new HireError("source_disabled", "LinkedIn and Indeed are not enabled.");
-  }
+  const options: GetJobByUrlOptions = isAdapterList(adaptersOrOptions)
+    ? { adapters: adaptersOrOptions }
+    : adaptersOrOptions;
+  const adapters = options.adapters ?? defaultAdapters();
+  const now = options.now ?? new Date();
+  const trimmed = parseRequestedUrl(url);
   const adapter = adapterForJobUrl(trimmed, adapters);
   if (adapter === null) {
     throw new HireError(
@@ -53,5 +41,29 @@ export async function getJobByUrl(
       "URL is not a Greenhouse or Ashby job posting we parse.",
     );
   }
-  return adapter.fetchJob(trimmed);
+  const db = options.db;
+  if (db !== undefined) {
+    const stored = findStoredJob(db, trimmed);
+    if (stored !== null && isFreshOpenFullJob(stored, now)) {
+      return stored.job;
+    }
+  }
+  try {
+    const job = await adapter.fetchJob(trimmed);
+    if (db === undefined) {
+      return job;
+    }
+    return upsertFullJob(db, job, inferBoardUrl(job.applyUrl) ?? inferBoardUrl(trimmed), now);
+  } catch (err) {
+    if (err instanceof HireError && err.code === "job_closed" && db !== undefined) {
+      const stored = findStoredJob(db, trimmed);
+      if (stored !== null) {
+        if (stored.job.closed) {
+          return stored.job;
+        }
+        return closeStoredJob(db, stored.job.id, now).job;
+      }
+    }
+    throw err;
+  }
 }

@@ -11,14 +11,17 @@ import {
   inferRemoteFromParts,
   innerHtml,
   locationsFromJsonLd,
+  makeJobId,
   normalizeUrl,
   organizationName,
   parseEmploymentType,
   parseIsoDate,
   parseLocation,
   remoteFromJsonLd,
+  resolveHref,
   salaryFromJsonLd,
   stripTags,
+  toJobSummary,
 } from "./parse.js";
 import type { FetchPage } from "./transport.js";
 
@@ -210,8 +213,139 @@ export function createAshbyAdapter(fetchPage: FetchPage): BoardAdapter {
       }
       return parseAshbyJobHtml(page.body, page.url, new Date().toISOString());
     },
-    async fetchBoard(_url: string): Promise<JobSummary[]> {
-      throw new HireError("internal", "Board list is not implemented in this PR.");
+    async fetchBoard(url: string): Promise<JobSummary[]> {
+      const page = await fetchPage(url);
+      if (page.status === 404) {
+        throw new HireError("board_not_found", "Ashby board is gone.");
+      }
+      if (page.status >= 400) {
+        throw new HireError("upstream_blocked", `Ashby returned HTTP ${page.status}.`);
+      }
+      return parseAshbyBoardHtml(page.body, page.url);
     },
   };
+}
+
+function postingListFromBootstrap(data: Record<string, unknown>): Record<string, unknown>[] {
+  const direct = data.jobPostings ?? data.jobs ?? data.postings;
+  if (Array.isArray(direct)) {
+    return direct.map(asRecord).filter((row): row is Record<string, unknown> => row !== null);
+  }
+  const board = asRecord(data.jobBoard);
+  if (board !== null) {
+    const nested = board.jobPostings ?? board.jobs ?? board.postings;
+    if (Array.isArray(nested)) {
+      return nested.map(asRecord).filter((row): row is Record<string, unknown> => row !== null);
+    }
+  }
+  const props = asRecord(data.props);
+  const pageProps = props !== null ? asRecord(props.pageProps) : null;
+  if (pageProps !== null) {
+    return postingListFromBootstrap(pageProps);
+  }
+  return [];
+}
+
+function ashbySlugFromPosting(posting: Record<string, unknown>, fallbackTitle: string): string {
+  return (
+    asString(posting.idName) ??
+    asString(posting.slug) ??
+    asString(posting.id) ??
+    fallbackTitle
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+  );
+}
+
+function ashbyBoardCompanyName(html: string, boardUrl: string): string {
+  return (
+    firstMatch(html, [
+      /<div\b[^>]*class=["'][^"']*ashby-job-board-heading[^"']*["'][^>]*>([\s\S]*?)<\/div>/i,
+      /<h1\b[^>]*>([\s\S]*?)<\/h1>/i,
+      /<title\b[^>]*>Jobs at ([\s\S]*?)<\/title>/i,
+    ]) ??
+    ashbyCompanyFromUrl(boardUrl) ??
+    "Ashby"
+  );
+}
+
+export function parseAshbyBoardHtml(html: string, boardUrl: string): JobSummary[] {
+  const companyName = ashbyBoardCompanyName(html, boardUrl);
+  const seen = new Set<string>();
+  const out: JobSummary[] = [];
+  const bootstrap = extractAshbyBootstrap(html);
+  const postings = bootstrap !== null ? postingListFromBootstrap(bootstrap) : [];
+
+  const push = (summary: JobSummary | null): void => {
+    if (summary === null || seen.has(summary.id)) {
+      return;
+    }
+    seen.add(summary.id);
+    out.push(summary);
+  };
+
+  for (const posting of postings) {
+    const title = asString(posting.title);
+    if (title === null) {
+      continue;
+    }
+    const slug = ashbySlugFromPosting(posting, title);
+    if (slug === "") {
+      continue;
+    }
+    const apply = resolveHref(boardUrl.endsWith("/") ? boardUrl : `${boardUrl}/`, slug);
+    if (apply === null) {
+      continue;
+    }
+    const locationRaw = asString(posting.locationName) ?? asString(posting.location);
+    const remoteFlag = posting.isRemote === true ? true : posting.isRemote === false ? false : null;
+    push(
+      toJobSummary({
+        id: makeJobId("ashby", slug),
+        title,
+        company: { name: companyName, id: null },
+        locations: locationRaw !== null ? [parseLocation(locationRaw)] : [],
+        remote: inferRemoteFromParts(locationRaw, "", remoteFlag),
+        applyUrl: normalizeUrl(apply) ?? apply,
+        closed: false,
+      }),
+    );
+  }
+
+  const company = ashbyCompanyFromUrl(boardUrl);
+  if (company !== null) {
+    const linkRe = new RegExp(
+      `<a\\b[^>]*href=["']([^"']*/${company}/[^"']+)["'][^>]*>([\\s\\S]*?)</a>`,
+      "gi",
+    );
+    let link: RegExpExecArray | null;
+    while ((link = linkRe.exec(html)) !== null) {
+      const absolute = resolveHref(boardUrl, link[1]);
+      if (absolute === null) {
+        continue;
+      }
+      const slug = parseAshbyJobSlug(absolute);
+      if (slug === null || slug === company) {
+        continue;
+      }
+      const title = stripTags(link[2]).trim();
+      if (title === "") {
+        continue;
+      }
+      push(
+        toJobSummary({
+          id: makeJobId("ashby", slug),
+          title,
+          company: { name: companyName, id: null },
+          locations: [],
+          remote: null,
+          applyUrl: normalizeUrl(absolute) ?? absolute,
+          closed: false,
+        }),
+      );
+    }
+  }
+
+  return out;
 }

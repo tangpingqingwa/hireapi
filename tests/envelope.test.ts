@@ -216,6 +216,7 @@ test("Job and JobSummary shapes match SPEC (compile-time + fixture)", () => {
     applyUrl: "https://example.com/apply",
     postedAt: null,
     closed: false,
+    closedAt: null,
     fetchedAt: "2026-01-01T00:00:00.000Z",
   };
   const summary: JobSummary = {

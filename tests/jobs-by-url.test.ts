@@ -42,6 +42,7 @@ function assertJobShape(job: Job): void {
   assert.equal(job.descriptionMarkdown.includes("<div>"), false);
   assert.equal(job.descriptionMarkdown.includes("<script"), false);
   assert.equal(job.closed, false);
+  assert.equal(job.closedAt, null);
   assert.match(job.fetchedAt, /^\d{4}-\d{2}-\d{2}T/);
 }
 

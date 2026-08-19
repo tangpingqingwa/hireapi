@@ -9,14 +9,17 @@ import {
   inferRemoteFromParts,
   innerHtml,
   locationsFromJsonLd,
+  makeJobId,
   normalizeUrl,
   organizationName,
   parseEmploymentType,
   parseIsoDate,
   parseLocation,
   remoteFromJsonLd,
+  resolveHref,
   salaryFromJsonLd,
   stripTags,
+  toJobSummary,
 } from "./parse.js";
 import type { FetchPage } from "./transport.js";
 
@@ -46,12 +49,12 @@ export function matchGreenhouseBoardUrl(url: string): boolean {
   if (host === null || !JOB_HOSTS.has(host)) {
     return false;
   }
-  if (/\/jobs\/\d+/.test(url)) {
+  if (/\/jobs\/\d+/.test(url) || /\/embed\/job_app/.test(url)) {
     return false;
   }
   const parsed = new URL(url);
   const parts = parsed.pathname.split("/").filter(Boolean);
-  return parts.length >= 1;
+  return parts.length >= 1 && parts[0] !== "embed";
 }
 
 export function parseGreenhouseJobId(url: string): string | null {
@@ -142,8 +145,130 @@ export function createGreenhouseAdapter(fetchPage: FetchPage): BoardAdapter {
       }
       return parseGreenhouseJobHtml(page.body, page.url, new Date().toISOString());
     },
-    async fetchBoard(_url: string): Promise<JobSummary[]> {
-      throw new HireError("internal", "Board list is not implemented in this PR.");
+    async fetchBoard(url: string): Promise<JobSummary[]> {
+      const page = await fetchPage(url);
+      if (page.status === 404) {
+        throw new HireError("board_not_found", "Greenhouse board is gone.");
+      }
+      if (page.status >= 400) {
+        throw new HireError("upstream_blocked", `Greenhouse returned HTTP ${page.status}.`);
+      }
+      return parseGreenhouseBoardHtml(page.body, page.url);
     },
   };
+}
+
+export function greenhouseBoardToken(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    const forToken = parsed.searchParams.get("for");
+    if (forToken !== null && forToken !== "") {
+      return forToken;
+    }
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    if (parts[0] !== undefined && parts[0] !== "embed" && parts[0] !== "jobs") {
+      return parts[0];
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function greenhouseCompanyName(html: string, boardUrl: string): string {
+  const fromPage =
+    firstMatch(html, [
+      /<span\b[^>]*class=["'][^"']*company-name[^"']*["'][^>]*>([\s\S]*?)<\/span>/i,
+      /<h1\b[^>]*>([\s\S]*?)<\/h1>/i,
+      /<title\b[^>]*>Jobs at ([\s\S]*?)<\/title>/i,
+      /<title\b[^>]*>([\s\S]*?)<\/title>/i,
+    ]);
+  if (fromPage !== null && fromPage !== "") {
+    return fromPage.replace(/^at\s+/i, "").replace(/\s+jobs$/i, "").trim();
+  }
+  return greenhouseBoardToken(boardUrl) ?? "Greenhouse";
+}
+
+function locationNearLink(block: string): string | null {
+  return firstMatch(block, [
+    /<span\b[^>]*class=["'][^"']*location[^"']*["'][^>]*>([\s\S]*?)<\/span>/i,
+    /<div\b[^>]*class=["'][^"']*location[^"']*["'][^>]*>([\s\S]*?)<\/div>/i,
+    /<p\b[^>]*class=["'][^"']*[^"']*metadata[^"']*["'][^>]*>([\s\S]*?)<\/p>/i,
+  ]);
+}
+
+function summaryFromGreenhouseLink(
+  href: string,
+  titleHtml: string,
+  locationRaw: string | null,
+  companyName: string,
+  boardUrl: string,
+): JobSummary | null {
+  const absolute = resolveHref(boardUrl, href);
+  if (absolute === null || !/\/jobs\/\d+/.test(absolute)) {
+    return null;
+  }
+  const sourceJobId = parseGreenhouseJobId(absolute);
+  if (sourceJobId === null) {
+    return null;
+  }
+  const title = stripTags(titleHtml).trim();
+  if (title === "") {
+    return null;
+  }
+  const applyUrl = normalizeUrl(absolute) ?? absolute;
+  return toJobSummary({
+    id: makeJobId("greenhouse", sourceJobId),
+    title,
+    company: { name: companyName, id: null },
+    locations: locationRaw !== null && locationRaw !== "" ? [parseLocation(locationRaw)] : [],
+    remote: inferRemoteFromParts(locationRaw, "", null),
+    applyUrl,
+    closed: false,
+  });
+}
+
+export function parseGreenhouseBoardHtml(html: string, boardUrl: string): JobSummary[] {
+  const companyName = greenhouseCompanyName(html, boardUrl);
+  const seen = new Set<string>();
+  const out: JobSummary[] = [];
+
+  const push = (summary: JobSummary | null): void => {
+    if (summary === null || seen.has(summary.id)) {
+      return;
+    }
+    seen.add(summary.id);
+    out.push(summary);
+  };
+
+  const blockRe =
+    /<div\b[^>]*class=["'][^"']*\b(?:opening|job-post)\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi;
+  let block: RegExpExecArray | null;
+  while ((block = blockRe.exec(html)) !== null) {
+    const link = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i.exec(block[1]);
+    if (link === null) {
+      continue;
+    }
+    push(
+      summaryFromGreenhouseLink(link[1], link[2], locationNearLink(block[1]), companyName, boardUrl),
+    );
+  }
+
+  const linkRe = /<a\b[^>]*href=["']([^"']*\/jobs\/\d+[^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let link: RegExpExecArray | null;
+  while ((link = linkRe.exec(html)) !== null) {
+    const windowStart = Math.max(0, link.index - 200);
+    const windowEnd = Math.min(html.length, link.index + link[0].length + 400);
+    push(
+      summaryFromGreenhouseLink(
+        link[1],
+        link[2],
+        locationNearLink(html.slice(windowStart, windowEnd)),
+        companyName,
+        boardUrl,
+      ),
+    );
+  }
+
+  return out;
 }
