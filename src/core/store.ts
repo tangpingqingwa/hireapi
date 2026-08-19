@@ -122,6 +122,17 @@ export function listStoredJobsForBoard(db: HireApiDb, boardUrl: string): StoredJ
     .map(rowToStored);
 }
 
+export function listStoredJobs(db: HireApiDb): StoredJob[] {
+  return db.prepare<[], JobRow>("SELECT * FROM jobs").all().map(rowToStored);
+}
+
+export function listStoredJobsForCompany(db: HireApiDb, companyId: string): StoredJob[] {
+  return db
+    .prepare<[string], JobRow>("SELECT * FROM jobs WHERE company_id = ?")
+    .all(companyId)
+    .map(rowToStored);
+}
+
 export function isFreshOpenFullJob(stored: StoredJob, now: Date): boolean {
   if (stored.job.closed || !stored.hasFullDescription) {
     return false;

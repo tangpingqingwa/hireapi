@@ -1,6 +1,7 @@
 import { inferBoardUrl } from "../adapters/parse.js";
 import type { HireApiDb } from "../db.js";
 import type { BoardAdapter, Job } from "../types.js";
+import { ensureCompany } from "./companies.js";
 import { HireError } from "./errors.js";
 import { adapterForJobUrl, defaultAdapters, parseRequestedUrl } from "./router.js";
 import {
@@ -53,7 +54,18 @@ export async function getJobByUrl(
     if (db === undefined) {
       return job;
     }
-    return upsertFullJob(db, job, inferBoardUrl(job.applyUrl) ?? inferBoardUrl(trimmed), now);
+    const boardUrl = inferBoardUrl(job.applyUrl) ?? inferBoardUrl(trimmed);
+    const company = ensureCompany(db, {
+      name: job.company.name,
+      boardUrl,
+      existingId: job.company.id,
+    });
+    return upsertFullJob(
+      db,
+      { ...job, company: { name: company.name, id: company.id } },
+      boardUrl,
+      now,
+    );
   } catch (err) {
     if (err instanceof HireError && err.code === "job_closed" && db !== undefined) {
       const stored = findStoredJob(db, trimmed);

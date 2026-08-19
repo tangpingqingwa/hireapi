@@ -4,6 +4,7 @@ import { parseLeverJobId } from "../adapters/lever.js";
 import { inferBoardUrl, normalizeUrl } from "../adapters/parse.js";
 import type { HireApiDb } from "../db.js";
 import type { BoardAdapter, JobSummary } from "../types.js";
+import { ensureCompany } from "./companies.js";
 import { HireError } from "./errors.js";
 import { adapterForBoardUrl, defaultAdapters, parseRequestedUrl } from "./router.js";
 import {
@@ -68,9 +69,19 @@ export async function getBoardByUrl(
     }
     const apply = normalizeUrl(summary.applyUrl) ?? summary.applyUrl;
     openApplyUrls.add(apply);
+    const company = ensureCompany(db, {
+      name: summary.company.name,
+      boardUrl,
+      existingId: summary.company.id,
+    });
     upsertJobSummary(
       db,
-      { ...summary, applyUrl: apply, hasFullDescription: false },
+      {
+        ...summary,
+        applyUrl: apply,
+        company: { name: company.name, id: company.id },
+        hasFullDescription: false,
+      },
       adapter.vendor,
       sourceJobIdForSummary(adapter.vendor, apply),
       boardUrl,
