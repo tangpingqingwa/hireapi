@@ -33,6 +33,25 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   fi
 fi
 
+echo "== adapters stay fixture-only (no live ATS hosts) =="
+if [[ -d src/adapters ]]; then
+  if grep -RInE '(^|[^[:alnum:]_])(fetch|axios|got)\s*\(' src/adapters src/core >/dev/null; then
+    fail "live HTTP client call in adapters/core (fixture transport only)"
+  fi
+  if [[ -d src/adapters/lever ]] || [[ -f src/adapters/lever.ts ]]; then
+    fail "Lever adapter is PR 4; do not land it here"
+  fi
+fi
+
+if [[ -d tests/fixtures/boards ]]; then
+  echo "== fixture catalog =="
+  [[ -f tests/fixtures/boards/index.json ]] || fail "missing tests/fixtures/boards/index.json"
+  gh_n="$(find tests/fixtures/boards/greenhouse -name '*.html' 2>/dev/null | wc -l | tr -d ' ')"
+  ashby_n="$(find tests/fixtures/boards/ashby -name '*.html' 2>/dev/null | wc -l | tr -d ' ')"
+  [[ "$gh_n" -ge 8 ]] || fail "expected ≥8 Greenhouse fixtures, got $gh_n"
+  [[ "$ashby_n" -ge 7 ]] || fail "expected ≥7 Ashby fixtures, got $ashby_n"
+fi
+
 echo "== markdown is UTF-8 text =="
 file -b --mime-encoding README.md SPEC.md CONTRIBUTING.md | grep -qiE 'utf-8|us-ascii' \
   || fail "docs are not UTF-8/ASCII"
