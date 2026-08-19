@@ -79,6 +79,7 @@ Parse only explicit text (`$120,000–$140,000 a year`). If ambiguous → `salar
 - **Acceptance:** SPEC 6
 
 ### PR 6: MCP
+- **Files:** `src/mcp/*`, `llms.txt`, `tests/mcp.test.ts`
 - **Dependencies:** PR 5
 - **Tools:** get_job, list_board, search_jobs
 

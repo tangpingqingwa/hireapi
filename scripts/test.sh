@@ -13,7 +13,7 @@ fail() {
 }
 
 echo "== contract files =="
-for f in README.md SPEC.md BUILD.md CONTRIBUTING.md scripts/test.sh; do
+for f in README.md SPEC.md BUILD.md CONTRIBUTING.md scripts/test.sh llms.txt; do
   [[ -f "$f" ]] || fail "missing $f"
   [[ -s "$f" ]] || fail "empty $f"
 done
@@ -53,9 +53,31 @@ if [[ -d src/core ]]; then
   [[ -f tests/search.test.ts ]] || fail "missing tests/search.test.ts"
   grep -q 'CREATE TABLE companies' src/migrations/003_companies.sql \
     || fail "companies migration does not create companies"
-  if grep -RInE 'search_jobs|list_board' src --include='*.ts' >/dev/null; then
-    fail "MCP is PR 6; do not land MCP tools here"
-  fi
+fi
+
+echo "== MCP tools wrap core/* (PR 6) =="
+[[ -f src/mcp/server.ts ]] || fail "missing src/mcp/server.ts"
+[[ -f src/mcp/tools.ts ]] || fail "missing src/mcp/tools.ts"
+[[ -f tests/mcp.test.ts ]] || fail "missing tests/mcp.test.ts"
+[[ -f llms.txt ]] || fail "missing llms.txt"
+grep -q 'get_job' src/mcp/tools.ts || fail "src/mcp/tools.ts missing get_job"
+grep -q 'list_board' src/mcp/tools.ts || fail "src/mcp/tools.ts missing list_board"
+grep -q 'search_jobs' src/mcp/tools.ts || fail "src/mcp/tools.ts missing search_jobs"
+grep -q 'getJobByUrl' src/mcp/tools.ts || fail "get_job must call core/jobs"
+grep -q 'getBoardByUrl' src/mcp/tools.ts || fail "list_board must call core/boards"
+grep -q 'searchIngestedJobs' src/mcp/tools.ts || fail "search_jobs must call core/search"
+grep -q 'get_job' llms.txt || fail "llms.txt missing get_job"
+grep -q 'list_board' llms.txt || fail "llms.txt missing list_board"
+grep -q 'search_jobs' llms.txt || fail "llms.txt missing search_jobs"
+grep -q 'When not to call' llms.txt || fail "llms.txt missing when-not-to-call"
+grep -qi 'we do not apply' llms.txt || fail "llms.txt missing do-not-apply skill"
+grep -qi 'LinkedIn' llms.txt || fail "llms.txt missing LinkedIn disclaimer"
+grep -qi 'salary may be null' llms.txt || fail "llms.txt missing salary-null skill"
+if grep -RInE 'adapters/' src/mcp src/http >/dev/null 2>&1; then
+  fail "MCP and HTTP must call core/* only"
+fi
+if grep -RInE '(^|[^[:alnum:]_])(fetch|axios|got)\s*\(' src/mcp >/dev/null; then
+  fail "live HTTP client call in src/mcp (fixture transport only)"
 fi
 
 if [[ -d tests/fixtures/boards ]]; then
@@ -70,7 +92,7 @@ if [[ -d tests/fixtures/boards ]]; then
 fi
 
 echo "== markdown is UTF-8 text =="
-file -b --mime-encoding README.md SPEC.md CONTRIBUTING.md | grep -qiE 'utf-8|us-ascii' \
+file -b --mime-encoding README.md SPEC.md CONTRIBUTING.md llms.txt | grep -qiE 'utf-8|us-ascii' \
   || fail "docs are not UTF-8/ASCII"
 
 if [[ -f package.json ]]; then
