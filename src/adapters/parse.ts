@@ -388,6 +388,11 @@ export function remoteFromJsonLd(posting: JsonLdJobPosting): boolean | null {
 const PERIOD_RE =
   /\b(?:an?|per|\/)\s*(year|yr|annum|annual|annually|hour|hr|month|mo)\b|\b(yearly|hourly|monthly)\b/i;
 
+const SALARY_AMOUNT = String.raw`(?:[$£€]|usd|gbp|eur)\s*\d[\d,]*(?:\.\d+)?k?`;
+const SALARY_RANGE_TAIL = String.raw`(?:\s*(?:–|—|-|to)\s*(?:[$£€]|usd|gbp|eur)?\s*\d[\d,]*(?:\.\d+)?k?)?`;
+const SALARY_PERIOD_TAIL = String.raw`\s*(?:(?:an?|per|\/)\s*(?:year|yr|annum|annual|annually|hour|hr|month|mo)|yearly|hourly|monthly)\b`;
+const SALARY_SNIPPET = new RegExp(`${SALARY_AMOUNT}${SALARY_RANGE_TAIL}${SALARY_PERIOD_TAIL}`, "i");
+
 function periodFromText(text: string): SalaryPeriod | null {
   const match = PERIOD_RE.exec(text);
   if (match === null) {
@@ -434,20 +439,20 @@ function parseMoneyToken(raw: string): number | null {
 }
 
 /**
- * Only explicit ranges or singles with a period. "competitive", "$100k+",
- * or a bare number without year/hour/month → null.
+ * Only explicit ranges or singles with a period attached to the amount.
+ * A period word elsewhere in the blob ("Hourly contractors… $160,000 a year")
+ * does not count. "competitive", "$100k+", or a bare number → null.
  */
 export function parseSalary(text: string): Salary | null {
-  const raw = text.replace(/\s+/g, " ").trim();
-  if (raw === "") {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (normalized === "") {
     return null;
   }
-  if (/\b(competitive|negotiable|doe|depends|equity only)\b/i.test(raw) && !/\$|£|€|\d/.test(raw)) {
+  const snippetMatch = SALARY_SNIPPET.exec(normalized);
+  if (snippetMatch === null) {
     return null;
   }
-  if (/\+|plus\b|from\s|up to\b/i.test(raw) && !/–|-|—| to /i.test(raw)) {
-    return null;
-  }
+  const raw = snippetMatch[0];
   const period = periodFromText(raw);
   if (period === null) {
     return null;
@@ -529,19 +534,8 @@ export function salaryFromJsonLd(posting: JsonLdJobPosting): Salary | null {
   };
 }
 
-const SALARY_SNIPPET =
-  /(?:[$£€]|usd|gbp|eur)\s*\d[\d,]*(?:\.\d+)?k?(?:\s*(?:–|—|-|to)\s*(?:[$£€]|usd|gbp|eur)?\s*\d[\d,]*(?:\.\d+)?k?)?\s*(?:an?|per|\/)\s*(?:year|yr|annum|hour|hr|month|mo)\b/i;
-
 export function findSalaryInText(text: string): Salary | null {
-  const direct = parseSalary(text);
-  if (direct !== null) {
-    return direct;
-  }
-  const match = SALARY_SNIPPET.exec(text);
-  if (match === null) {
-    return null;
-  }
-  return parseSalary(match[0]);
+  return parseSalary(text);
 }
 
 export function firstMatch(html: string, patterns: RegExp[]): string | null {

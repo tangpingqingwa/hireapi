@@ -62,6 +62,12 @@ test("matchJobUrl accepts Greenhouse and Ashby job URLs only", () => {
   assert.equal(matchAshbyJobUrl(GH_STRIPE), false);
   assert.equal(matchGreenhouseJobUrl("https://jobs.lever.co/demo/abc"), false);
   assert.equal(matchAshbyJobUrl("https://jobs.lever.co/demo/abc"), false);
+  assert.equal(
+    matchGreenhouseJobUrl("https://example.com/careers?q=greenhouse.io/embed/job_app&token=123"),
+    false,
+  );
+  assert.equal(matchAshbyJobUrl("https://www.ashbyhq.com/blog/something"), false);
+  assert.equal(matchAshbyJobUrl("https://ashbyhq.com/blog/something"), false);
 });
 
 test("parseSalary only accepts explicit ranges or singles with a period", () => {
@@ -83,6 +89,13 @@ test("parseSalary only accepts explicit ranges or singles with a period", () => 
   assert.equal(parseSalary("$100k+"), null);
   assert.equal(parseSalary("Staff Engineer"), null);
   assert.equal(parseSalary("DOE"), null);
+  assert.deepEqual(parseSalary("Hourly contractors should not apply. This is $160,000 a year."), {
+    min: 160000,
+    max: 160000,
+    currency: "USD",
+    period: "year",
+    raw: "$160,000 a year",
+  });
 });
 
 test("fixture catalog is 8 Greenhouse + 7 Ashby job snapshots", () => {
@@ -209,6 +222,12 @@ test("Ashby job: salary, remote, Markdown, no leftover HTML", async () => {
   assert.equal(mercury.employmentType, "part_time");
   assert.equal(mercury.salary?.period, "hour");
   assert.equal(mercury.salary?.min, 28);
+
+  const retool = await getJobByUrl(ASHBY_RETOOL);
+  assert.equal(retool.salary?.min, 160000);
+  assert.equal(retool.salary?.max, 160000);
+  assert.equal(retool.salary?.currency, "USD");
+  assert.equal(retool.salary?.period, "year");
 });
 
 test("unknown vendor and disabled sources do not invent a job", async () => {
@@ -288,6 +307,37 @@ test("GET /v1/jobs/by-url unknown vendor is 422 unsupported_board and 0 credits"
   };
   assert.equal(body.error.code, "unsupported_board");
   assert.equal(body.meta.creditsCharged, 0);
+
+  const me = await app.inject({
+    method: "GET",
+    url: "/v1/me",
+    headers: { authorization: `Bearer ${TEST_KEY}` },
+  });
+  assert.equal((me.json() as { data: { creditsRemaining: number } }).data.creditsRemaining, 100);
+});
+
+test("query-string Greenhouse and marketing Ashby hosts are 422 unsupported_board, 0 credits", async () => {
+  const app = await buildApp({ bootstrapKey: TEST_KEY });
+  after(() => app.close());
+
+  const spoofed = [
+    "https://example.com/careers?q=greenhouse.io/embed/job_app&token=123",
+    "https://www.ashbyhq.com/blog/something",
+  ];
+  for (const url of spoofed) {
+    const response = await app.inject({
+      method: "GET",
+      url: `/v1/jobs/by-url?url=${encodeURIComponent(url)}`,
+      headers: { authorization: `Bearer ${TEST_KEY}` },
+    });
+    assert.equal(response.statusCode, 422);
+    const body = response.json() as {
+      error: { code: ErrorCode };
+      meta: { creditsCharged: number };
+    };
+    assert.equal(body.error.code, "unsupported_board");
+    assert.equal(body.meta.creditsCharged, 0);
+  }
 
   const me = await app.inject({
     method: "GET",

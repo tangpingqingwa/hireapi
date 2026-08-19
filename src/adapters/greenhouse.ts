@@ -24,16 +24,21 @@ const JOB_HOSTS = new Set(["boards.greenhouse.io", "job-boards.greenhouse.io"]);
 
 export function matchGreenhouseJobUrl(url: string): boolean {
   const host = hostOf(url);
-  if (host === null) {
+  if (host === null || !JOB_HOSTS.has(host)) {
     return false;
   }
-  if (/greenhouse\.io\/embed\/job_app/.test(url) && /[?&]token=\d+/.test(url)) {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  const path = parsed.pathname;
+  const token = parsed.searchParams.get("token") ?? "";
+  if (/\/embed\/job_app\/?$/.test(path) && /^\d+$/.test(token)) {
     return true;
   }
-  if (JOB_HOSTS.has(host)) {
-    return /\/jobs\/\d+/.test(url);
-  }
-  return false;
+  return /\/jobs\/\d+/.test(path);
 }
 
 export function matchGreenhouseBoardUrl(url: string): boolean {

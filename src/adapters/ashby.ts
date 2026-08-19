@@ -22,7 +22,7 @@ import {
 } from "./parse.js";
 import type { FetchPage } from "./transport.js";
 
-const JOB_HOSTS = new Set(["jobs.ashbyhq.com", "ashbyhq.com"]);
+const JOB_HOSTS = new Set(["jobs.ashbyhq.com"]);
 
 export function matchAshbyJobUrl(url: string): boolean {
   const host = hostOf(url);
