@@ -1,12 +1,17 @@
 import { createAshbyAdapter } from "../adapters/ashby.js";
 import { createFixtureFetchPage } from "../adapters/fixtures.js";
 import { createGreenhouseAdapter } from "../adapters/greenhouse.js";
+import { createLeverAdapter } from "../adapters/lever.js";
 import type { FetchPage } from "../adapters/transport.js";
 import type { BoardAdapter } from "../types.js";
 import { HireError } from "./errors.js";
 
 export function defaultAdapters(fetchPage: FetchPage = createFixtureFetchPage()): BoardAdapter[] {
-  return [createGreenhouseAdapter(fetchPage), createAshbyAdapter(fetchPage)];
+  return [
+    createGreenhouseAdapter(fetchPage),
+    createAshbyAdapter(fetchPage),
+    createLeverAdapter(fetchPage),
+  ];
 }
 
 export function parseRequestedUrl(url: string): string {

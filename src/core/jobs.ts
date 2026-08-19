@@ -38,7 +38,7 @@ export async function getJobByUrl(
   if (adapter === null) {
     throw new HireError(
       "unsupported_board",
-      "URL is not a Greenhouse or Ashby job posting we parse.",
+      "URL is not a Greenhouse, Ashby, or Lever job posting we parse.",
     );
   }
   const db = options.db;

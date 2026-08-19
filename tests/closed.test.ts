@@ -5,6 +5,7 @@ import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createAshbyAdapter } from "../src/adapters/ashby.js";
 import { createGreenhouseAdapter } from "../src/adapters/greenhouse.js";
+import { createLeverAdapter } from "../src/adapters/lever.js";
 import type { FetchPage } from "../src/adapters/transport.js";
 import { buildApp } from "../src/app.js";
 import { getBoardByUrl } from "../src/core/boards.js";
@@ -18,13 +19,19 @@ const GH_STRIPE = "https://boards.greenhouse.io/stripedemo/jobs/4000001";
 const GH_ANALYST = "https://boards.greenhouse.io/stripedemo/jobs/4000011";
 const GH_BOARD = "https://boards.greenhouse.io/stripedemo";
 const GH_UNKNOWN_CLOSED = "https://boards.greenhouse.io/stripedemo/jobs/4099999";
+const LEVER_IOS = "https://jobs.lever.co/netflixdemo/lever-ios-1";
+const LEVER_UNKNOWN_CLOSED = "https://jobs.lever.co/netflixdemo/closed-role";
 
 function html(file: string): string {
   return readFileSync(join(FIXTURES, file), "utf8");
 }
 
 function adaptersFor(fetchPage: FetchPage): BoardAdapter[] {
-  return [createGreenhouseAdapter(fetchPage), createAshbyAdapter(fetchPage)];
+  return [
+    createGreenhouseAdapter(fetchPage),
+    createAshbyAdapter(fetchPage),
+    createLeverAdapter(fetchPage),
+  ];
 }
 
 function boardHtml(jobs: Array<{ href: string; title: string; location: string }>): string {
@@ -211,6 +218,54 @@ test("GET /v1/jobs/by-url known 404 is 200 closed:true, empty Markdown, not 404"
   assert.equal(body.data.descriptionMarkdown, "");
   assert.equal(body.data.title, "Retired Role");
   assert.equal(body.meta.creditsCharged, 1);
+});
+
+test("known Lever job URL that 404s is 200 closed:true with empty description", async () => {
+  const db = openDatabase(":memory:");
+  after(() => db.close());
+  let status = 200;
+  const fetchPage: FetchPage = async (url) => {
+    if (url.includes("lever-ios-1")) {
+      return {
+        url: LEVER_IOS,
+        status,
+        body: status === 200 ? html("lever/netflix-ios-engineer.html") : "",
+      };
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  };
+  const adapters = adaptersFor(fetchPage);
+  const t0 = new Date("2026-03-01T00:00:00.000Z");
+  const t1 = new Date(t0.getTime() + OPEN_JOB_CACHE_MS + 1);
+
+  const open = await getJobByUrl(LEVER_IOS, { adapters, db, now: t0 });
+  assert.equal(open.source, "lever");
+  assert.equal(open.closed, false);
+  assert.match(open.descriptionMarkdown, /Ship the iOS client/);
+
+  status = 404;
+  const closed = await getJobByUrl(LEVER_IOS, { adapters, db, now: t1 });
+  assert.equal(closed.closed, true);
+  assert.ok(closed.closedAt !== null);
+  assert.equal(closed.descriptionMarkdown, "");
+  assert.equal(closed.title, "iOS Engineer");
+  assert.equal(closed.id, open.id);
+});
+
+test("unknown Lever job URL that 404s is job_closed", async () => {
+  const db = openDatabase(":memory:");
+  after(() => db.close());
+  const fetchPage: FetchPage = async (url) => {
+    if (url.includes("closed-role")) {
+      return { url: LEVER_UNKNOWN_CLOSED, status: 404, body: "" };
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  };
+  await assert.rejects(
+    () => getJobByUrl(LEVER_UNKNOWN_CLOSED, { adapters: adaptersFor(fetchPage), db }),
+    { name: "HireError", code: "job_closed" },
+  );
+  assert.equal(findStoredJob(db, LEVER_UNKNOWN_CLOSED), null);
 });
 
 test("Job.closed true never includes a live open description", () => {

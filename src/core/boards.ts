@@ -1,5 +1,6 @@
 import { parseAshbyJobSlug } from "../adapters/ashby.js";
 import { parseGreenhouseJobId } from "../adapters/greenhouse.js";
+import { parseLeverJobId } from "../adapters/lever.js";
 import { inferBoardUrl, normalizeUrl } from "../adapters/parse.js";
 import type { HireApiDb } from "../db.js";
 import type { BoardAdapter, JobSummary } from "../types.js";
@@ -29,6 +30,9 @@ function sourceJobIdForSummary(vendor: BoardAdapter["vendor"], applyUrl: string)
   if (vendor === "ashby") {
     return parseAshbyJobSlug(applyUrl);
   }
+  if (vendor === "lever") {
+    return parseLeverJobId(applyUrl);
+  }
   return null;
 }
 
@@ -44,7 +48,7 @@ export async function getBoardByUrl(
   if (adapter === null) {
     throw new HireError(
       "unsupported_board",
-      "URL is not a Greenhouse or Ashby board we parse.",
+      "URL is not a Greenhouse, Ashby, or Lever board we parse.",
     );
   }
   const boardUrl = inferBoardUrl(trimmed) ?? normalizeUrl(trimmed) ?? trimmed;
