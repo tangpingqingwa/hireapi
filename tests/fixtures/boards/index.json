@@ -135,6 +135,56 @@
       "vendor": "ashby",
       "kind": "job",
       "status": 404
+    },
+    {
+      "url": "https://jobs.lever.co/netflixdemo/lever-ios-1",
+      "file": "lever/netflix-ios-engineer.html",
+      "vendor": "lever",
+      "kind": "job"
+    },
+    {
+      "url": "https://jobs.lever.co/shopifydemo/lever-backend-1",
+      "file": "lever/shopify-remote-backend.html",
+      "vendor": "lever",
+      "kind": "job"
+    },
+    {
+      "url": "https://jobs.lever.co/twitchdemo/lever-sre-1",
+      "file": "lever/twitch-contract-sre.html",
+      "vendor": "lever",
+      "kind": "job"
+    },
+    {
+      "url": "https://jobs.lever.co/duolingodemo/lever-intern-1",
+      "file": "lever/duolingo-intern.html",
+      "vendor": "lever",
+      "kind": "job"
+    },
+    {
+      "url": "https://jobs.lever.co/boxdemo/lever-part-time-1",
+      "file": "lever/box-part-time.html",
+      "vendor": "lever",
+      "kind": "job"
+    },
+    {
+      "url": "https://jobs.lever.co/netflixdemo",
+      "file": "lever/netflix-board.html",
+      "vendor": "lever",
+      "kind": "board"
+    },
+    {
+      "url": "https://jobs.lever.co/gonedemo",
+      "file": "greenhouse/gone-board.html",
+      "vendor": "lever",
+      "kind": "board",
+      "status": 404
+    },
+    {
+      "url": "https://jobs.lever.co/netflixdemo/closed-role",
+      "file": "greenhouse/closed-job.html",
+      "vendor": "lever",
+      "kind": "job",
+      "status": 404
     }
   ]
 }

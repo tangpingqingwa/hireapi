@@ -10,6 +10,7 @@ import type { ErrorCode, JobSummary } from "../src/types.js";
 const TEST_KEY = "hk_test_boards_by_url";
 const GH_BOARD = "https://boards.greenhouse.io/stripedemo";
 const ASHBY_BOARD = "https://jobs.ashbyhq.com/lineardemo";
+const LEVER_BOARD = "https://jobs.lever.co/netflixdemo";
 const EMPTY_BOARD = "https://boards.greenhouse.io/emptydemo";
 const GONE_BOARD = "https://boards.greenhouse.io/gonedemo";
 
@@ -23,9 +24,10 @@ function assertSummary(row: JobSummary): void {
   assert.equal("descriptionMarkdown" in row, false);
 }
 
-test("fixture catalog includes Greenhouse and Ashby board snapshots", () => {
+test("fixture catalog includes Greenhouse, Ashby, and Lever board snapshots", () => {
   assert.ok(fixtureBoardUrls("greenhouse").length >= 1);
   assert.ok(fixtureBoardUrls("ashby").length >= 1);
+  assert.ok(fixtureBoardUrls("lever").length >= 1);
 });
 
 test("getBoardByUrl Greenhouse fixture returns summary jobs only", async () => {
@@ -54,6 +56,20 @@ test("getBoardByUrl Ashby fixture returns summary jobs only", async () => {
   assert.equal(board.jobs[0]?.remote, true);
 });
 
+test("getBoardByUrl Lever fixture returns ≥1 summary job", async () => {
+  const db = openDatabase(":memory:");
+  after(() => db.close());
+  const board = await getBoardByUrl(LEVER_BOARD, db);
+  assert.ok(board.jobs.length >= 1);
+  for (const row of board.jobs) {
+    assertSummary(row);
+  }
+  const ios = board.jobs.find((row) => row.title === "iOS Engineer");
+  assert.ok(ios);
+  assert.equal(ios.locations[0]?.city, "Los Gatos");
+  assert.equal(ios.applyUrl, "https://jobs.lever.co/netflixdemo/lever-ios-1");
+});
+
 test("GET /v1/boards/by-url Greenhouse → 200 summaries, 1 credit per open job", async () => {
   const app = await buildApp({ bootstrapKey: TEST_KEY });
   after(() => app.close());
@@ -74,6 +90,22 @@ test("GET /v1/boards/by-url Greenhouse → 200 summaries, 1 credit per open job"
     assertSummary(row);
   }
   assert.match(body.meta.requestId, /^req_/);
+});
+
+test("GET /v1/boards/by-url Lever → 200 summaries, 1 credit per open job", async () => {
+  const app = await buildApp({ bootstrapKey: TEST_KEY });
+  after(() => app.close());
+
+  const response = await app.inject({
+    method: "GET",
+    url: `/v1/boards/by-url?url=${encodeURIComponent(LEVER_BOARD)}`,
+    headers: { authorization: `Bearer ${TEST_KEY}` },
+  });
+  assert.equal(response.statusCode, 200);
+  const body = response.json() as { data: JobSummary[]; meta: { creditsCharged: number } };
+  assert.ok(body.data.length >= 1);
+  assert.equal(body.meta.creditsCharged, body.data.length);
+  assert.equal(body.data[0]?.hasFullDescription, false);
 });
 
 test("GET /v1/boards/by-url Ashby → 200 summaries, 1 credit per open job", async () => {
@@ -120,7 +152,7 @@ test("unknown vendor board is 422 unsupported_board and 0 credits", async () => 
 
   const response = await app.inject({
     method: "GET",
-    url: `/v1/boards/by-url?url=${encodeURIComponent("https://jobs.lever.co/demo")}`,
+    url: `/v1/boards/by-url?url=${encodeURIComponent("https://company.workday.com/demo")}`,
     headers: { authorization: `Bearer ${TEST_KEY}` },
   });
   assert.equal(response.statusCode, 422);

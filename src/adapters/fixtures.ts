@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { HireError } from "../core/errors.js";
+import type { AdapterVendor } from "../types.js";
 import { hostOf, normalizeUrl } from "./parse.js";
 import type { FetchedPage, FetchPage } from "./transport.js";
 
@@ -13,7 +14,7 @@ const FIXTURES_DIR = join(
 export type FixtureIndexEntry = {
   url: string;
   file: string;
-  vendor: "greenhouse" | "ashby";
+  vendor: AdapterVendor;
   kind: "job" | "board";
   status?: number;
 };
@@ -85,7 +86,7 @@ export function createFixtureFetchPage(index = loadFixtureIndex()): FetchPage {
 }
 
 export function fixtureJobUrls(
-  vendor?: "greenhouse" | "ashby",
+  vendor?: AdapterVendor,
   index = loadFixtureIndex(),
 ): string[] {
   return index.jobs
@@ -95,7 +96,7 @@ export function fixtureJobUrls(
 }
 
 export function fixtureBoardUrls(
-  vendor?: "greenhouse" | "ashby",
+  vendor?: AdapterVendor,
   index = loadFixtureIndex(),
 ): string[] {
   return index.jobs

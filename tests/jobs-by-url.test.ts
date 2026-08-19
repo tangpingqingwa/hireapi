@@ -6,6 +6,7 @@ import {
   matchGreenhouseBoardUrl,
   matchGreenhouseJobUrl,
 } from "../src/adapters/greenhouse.js";
+import { matchLeverBoardUrl, matchLeverJobUrl } from "../src/adapters/lever.js";
 import { parseSalary } from "../src/adapters/parse.js";
 import { buildApp } from "../src/app.js";
 import { createKey } from "../src/billing/keys.js";
@@ -30,6 +31,11 @@ const ASHBY_OPENAI = "https://jobs.ashbyhq.com/openaidemo/research-engineer";
 const ASHBY_ANTHROPIC = "https://jobs.ashbyhq.com/anthropicdemo/safety-engineer";
 const ASHBY_RETOOL = "https://jobs.ashbyhq.com/retooldemo/forward-deployed-engineer";
 const ASHBY_MERCURY = "https://jobs.ashbyhq.com/mercurydemo/support-specialist";
+const LEVER_NETFLIX = "https://jobs.lever.co/netflixdemo/lever-ios-1";
+const LEVER_SHOPIFY = "https://jobs.lever.co/shopifydemo/lever-backend-1";
+const LEVER_TWITCH = "https://jobs.lever.co/twitchdemo/lever-sre-1";
+const LEVER_DUOLINGO = "https://jobs.lever.co/duolingodemo/lever-intern-1";
+const LEVER_BOX = "https://jobs.lever.co/boxdemo/lever-part-time-1";
 
 function assertJobShape(job: Job): void {
   assert.match(job.id, /^job_/);
@@ -46,7 +52,7 @@ function assertJobShape(job: Job): void {
   assert.match(job.fetchedAt, /^\d{4}-\d{2}-\d{2}T/);
 }
 
-test("matchJobUrl accepts Greenhouse and Ashby job URLs only", () => {
+test("matchJobUrl accepts Greenhouse, Ashby, and Lever job URLs only", () => {
   assert.equal(matchGreenhouseJobUrl(GH_STRIPE), true);
   assert.equal(matchGreenhouseJobUrl(GH_FIGMA), true);
   assert.equal(matchGreenhouseJobUrl(GH_DATADOG), true);
@@ -59,10 +65,18 @@ test("matchJobUrl accepts Greenhouse and Ashby job URLs only", () => {
   assert.equal(matchAshbyBoardUrl("https://jobs.ashbyhq.com/lineardemo"), true);
   assert.equal(matchAshbyBoardUrl(ASHBY_LINEAR), false);
 
+  assert.equal(matchLeverJobUrl(LEVER_NETFLIX), true);
+  assert.equal(matchLeverJobUrl("https://jobs.lever.co/netflixdemo"), false);
+  assert.equal(matchLeverBoardUrl("https://jobs.lever.co/netflixdemo"), true);
+  assert.equal(matchLeverBoardUrl(LEVER_NETFLIX), false);
+  assert.equal(matchLeverJobUrl("https://jobs.lever.co/netflixdemo/lever-ios-1/apply"), true);
+
   assert.equal(matchGreenhouseJobUrl(ASHBY_LINEAR), false);
   assert.equal(matchAshbyJobUrl(GH_STRIPE), false);
-  assert.equal(matchGreenhouseJobUrl("https://jobs.lever.co/demo/abc"), false);
-  assert.equal(matchAshbyJobUrl("https://jobs.lever.co/demo/abc"), false);
+  assert.equal(matchGreenhouseJobUrl(LEVER_NETFLIX), false);
+  assert.equal(matchAshbyJobUrl(LEVER_NETFLIX), false);
+  assert.equal(matchLeverJobUrl(GH_STRIPE), false);
+  assert.equal(matchLeverJobUrl("https://www.lever.co/blog/something"), false);
   assert.equal(
     matchGreenhouseJobUrl("https://example.com/careers?q=greenhouse.io/embed/job_app&token=123"),
     false,
@@ -99,11 +113,13 @@ test("parseSalary only accepts explicit ranges or singles with a period", () => 
   });
 });
 
-test("fixture catalog is 8 Greenhouse + 7 Ashby job snapshots", () => {
+test("fixture catalog is 8 Greenhouse + 7 Ashby + 5 Lever job snapshots", () => {
   const gh = fixtureJobUrls("greenhouse");
   const ashby = fixtureJobUrls("ashby");
+  const lever = fixtureJobUrls("lever");
   assert.equal(gh.length, 8);
   assert.equal(ashby.length, 7);
+  assert.equal(lever.length, 5);
 });
 
 test("getJobByUrl parses every Greenhouse fixture into the Job schema", async () => {
@@ -201,6 +217,63 @@ test("Greenhouse remote + intern hourly + contract + ambiguous salary", async ()
   assert.match(embed.descriptionMarkdown, /\[Read the handbook\]/);
 });
 
+test("getJobByUrl parses every Lever fixture into the Job schema", async () => {
+  const cases: Array<{ url: string; title: string; sourceJobId: string }> = [
+    { url: LEVER_NETFLIX, title: "iOS Engineer", sourceJobId: "lever-ios-1" },
+    { url: LEVER_SHOPIFY, title: "Backend Engineer", sourceJobId: "lever-backend-1" },
+    { url: LEVER_TWITCH, title: "Site Reliability Contractor", sourceJobId: "lever-sre-1" },
+    { url: LEVER_DUOLINGO, title: "Software Engineering Intern", sourceJobId: "lever-intern-1" },
+    { url: LEVER_BOX, title: "Community Programs Lead", sourceJobId: "lever-part-time-1" },
+  ];
+  for (const item of cases) {
+    const job = await getJobByUrl(item.url);
+    assertJobShape(job);
+    assert.equal(job.source, "lever");
+    assert.equal(job.title, item.title);
+    assert.equal(job.sourceJobId, item.sourceJobId);
+  }
+});
+
+test("Lever job: salary, locations, Markdown, no leftover HTML", async () => {
+  const job = await getJobByUrl(LEVER_NETFLIX);
+  assert.equal(job.company.name, "NetflixDemo");
+  assert.equal(job.employmentType, "full_time");
+  assert.equal(job.remote, false);
+  assert.equal(job.locations[0]?.city, "Los Gatos");
+  assert.equal(job.locations[0]?.region, "CA");
+  assert.equal(job.salary?.min, 210000);
+  assert.equal(job.salary?.max, 280000);
+  assert.equal(job.salary?.currency, "USD");
+  assert.equal(job.salary?.period, "year");
+  assert.match(job.descriptionMarkdown, /^### About the role/m);
+  assert.match(job.descriptionMarkdown, /^- Own Swift playback features/m);
+  assert.match(job.descriptionMarkdown, /\[this posting\]/);
+  assert.equal(/<[a-zA-Z]/.test(job.descriptionMarkdown), false);
+
+  const remote = await getJobByUrl(LEVER_SHOPIFY);
+  assert.equal(remote.remote, true);
+  assert.equal(remote.salary?.min, 170000);
+  assert.equal(remote.salary?.max, 220000);
+  assert.equal(remote.locations[0]?.raw.includes("Canada"), true);
+
+  const contract = await getJobByUrl(LEVER_TWITCH);
+  assert.equal(contract.employmentType, "contract");
+  assert.equal(contract.salary, null);
+  assert.equal(contract.descriptionMarkdown.includes("do-not-leak"), false);
+  assert.equal(contract.descriptionMarkdown.includes(".secret"), false);
+
+  const intern = await getJobByUrl(LEVER_DUOLINGO);
+  assert.equal(intern.employmentType, "intern");
+  assert.equal(intern.salary?.min, 48);
+  assert.equal(intern.salary?.period, "hour");
+  assert.equal(intern.remote, false);
+
+  const part = await getJobByUrl(LEVER_BOX);
+  assert.equal(part.employmentType, "part_time");
+  assert.equal(part.salary?.period, "month");
+  assert.equal(part.salary?.min, 3800);
+});
+
 test("Ashby job: salary, remote, Markdown, no leftover HTML", async () => {
   const job = await getJobByUrl(ASHBY_LINEAR);
   assert.equal(job.company.name, "LinearDemo");
@@ -232,7 +305,7 @@ test("Ashby job: salary, remote, Markdown, no leftover HTML", async () => {
 });
 
 test("unknown vendor and disabled sources do not invent a job", async () => {
-  await assert.rejects(() => getJobByUrl("https://jobs.lever.co/demo/abc"), {
+  await assert.rejects(() => getJobByUrl("https://company.workday.com/demo/job/abc"), {
     name: "HireError",
     code: "unsupported_board",
   });
@@ -276,6 +349,23 @@ test("GET /v1/jobs/by-url Greenhouse fixture → 200 Job, 1 credit, Markdown", a
   assert.match(body.meta.requestId, /^req_/);
 });
 
+test("GET /v1/jobs/by-url Lever fixture → 200 Job, 1 credit, Markdown", async () => {
+  const app = await buildApp({ bootstrapKey: TEST_KEY });
+  after(() => app.close());
+
+  const response = await app.inject({
+    method: "GET",
+    url: `/v1/jobs/by-url?url=${encodeURIComponent(LEVER_NETFLIX)}`,
+    headers: { authorization: `Bearer ${TEST_KEY}` },
+  });
+  assert.equal(response.statusCode, 200);
+  const body = response.json() as { data: Job; meta: { creditsCharged: number } };
+  assert.equal(body.data.source, "lever");
+  assert.equal(body.data.title, "iOS Engineer");
+  assert.equal(body.data.descriptionMarkdown.includes("<div>"), false);
+  assert.equal(body.meta.creditsCharged, 1);
+});
+
 test("GET /v1/jobs/by-url Ashby fixture → 200 Job, 1 credit", async () => {
   const app = await buildApp({ bootstrapKey: TEST_KEY });
   after(() => app.close());
@@ -298,7 +388,7 @@ test("GET /v1/jobs/by-url unknown vendor is 422 unsupported_board and 0 credits"
 
   const response = await app.inject({
     method: "GET",
-    url: `/v1/jobs/by-url?url=${encodeURIComponent("https://jobs.lever.co/demo/abc")}`,
+    url: `/v1/jobs/by-url?url=${encodeURIComponent("https://company.workday.com/demo/job/abc")}`,
     headers: { authorization: `Bearer ${TEST_KEY}` },
   });
   assert.equal(response.statusCode, 422);

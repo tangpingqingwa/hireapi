@@ -1,5 +1,6 @@
 import { toMarkdown } from "../markdown.js";
 import type {
+  AdapterVendor,
   EmploymentType,
   Job,
   JobLocation,
@@ -601,7 +602,7 @@ export function innerHtml(html: string, idOrClass: { id?: string; className?: st
 }
 
 export function buildJob(input: {
-  source: "greenhouse" | "ashby";
+  source: AdapterVendor;
   sourceJobId: string;
   title: string;
   companyName: string;
@@ -681,6 +682,9 @@ export function inferBoardUrl(jobOrBoardUrl: string): string | null {
     return null;
   }
   if (host === "jobs.ashbyhq.com" && parts[0] !== undefined) {
+    return `${url.protocol}//${host}/${parts[0]}`;
+  }
+  if (host === "jobs.lever.co" && parts[0] !== undefined && parts[0] !== "embed" && parts[0] !== "api") {
     return `${url.protocol}//${host}/${parts[0]}`;
   }
   return null;
