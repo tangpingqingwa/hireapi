@@ -1,6 +1,7 @@
 # HireAPI
 
 Build contract: [SPEC.md](./SPEC.md).
+How we work: [CONTRIBUTING.md](./CONTRIBUTING.md). `main` stays buildable and testable.
 
 Public job posts from Indeed, LinkedIn job pages, and modern ATS boards (Greenhouse, Ashby, Lever) in one schema.
 
