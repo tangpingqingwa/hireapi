@@ -2,9 +2,11 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { bootstrapKeyIfEmpty } from "./billing/keys.js";
 import { openDatabase, type HireApiDb } from "./db.js";
 import { boardsRoutes } from "./http/routes/boards.js";
+import { companiesRoutes } from "./http/routes/companies.js";
 import { healthRoutes } from "./http/routes/health.js";
 import { jobsRoutes } from "./http/routes/jobs.js";
 import { meRoutes } from "./http/routes/me.js";
+import { searchRoutes } from "./http/routes/search.js";
 
 export type BuildAppOptions = {
   logger?: boolean;
@@ -33,5 +35,7 @@ export async function buildApp(
   await app.register(meRoutes);
   await app.register(jobsRoutes);
   await app.register(boardsRoutes);
+  await app.register(companiesRoutes);
+  await app.register(searchRoutes);
   return app;
 }

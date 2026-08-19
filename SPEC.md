@@ -119,13 +119,25 @@ Unknown vendor → `422 unsupported_board`. Board host matches but the board is 
 
 ### 4.3 `GET /v1/companies/{id}/jobs`
 
-**Credits:** 1 / page. `id` is our company id created when a board is first ingested.
+**Credits:** 1 / page (min 1 if the company exists). `id` is our company id (`co_…`) created when a board or job is first ingested. Same board URL always maps to the same id.
+
+`data` is summary jobs only (same shape as `GET /v1/boards/by-url`). Closed jobs are omitted. Unknown id → `404 not_found`, 0 credits. `cursor` is accepted and unused when the page fits.
+
+Adapters still emit `company.id: null`; the id is assigned in `core/` on persist.
 
 ### 4.4 `GET /v1/search`
 
-**Credits:** 1 / hit. Query: `q`, `location`, `source`, `remote`, `cursor`.
+**Credits:** 1 / hit (0 if `data: []`). Query: `q`, `location`, `source`, `remote`, `cursor`.
 
-v1 search = our ingested boards, **not** a live Indeed scrape. Homepage must not say “search Indeed” until that adapter exists.
+v1 search = already-ingested open jobs in our store, **not** a live Indeed scrape. Homepage must not say “search Indeed” until that adapter exists.
+
+- `q` matches title or company name (substring, case-insensitive).
+- `location` matches any location field (raw / city / region / country).
+- `source` is `greenhouse` | `ashby` | `lever`. LinkedIn/Indeed → `422 source_disabled`.
+- `remote` is `true` or `false`.
+- `cursor` is accepted and unused when the page fits.
+
+`data` is summary jobs only. Closed jobs are omitted. Search never fetches an ATS.
 
 ### 4.5 Control plane
 

@@ -47,8 +47,14 @@ if [[ -d src/core ]]; then
   [[ -f src/migrations/002_jobs.sql ]] || fail "missing jobs table migration"
   [[ -f tests/closed.test.ts ]] || fail "missing tests/closed.test.ts"
   grep -q 'CREATE TABLE jobs' src/migrations/002_jobs.sql || fail "jobs migration does not create jobs"
-  if [[ -d src/core/search.ts ]] || [[ -f src/core/search.ts ]]; then
-    fail "search is PR 5; do not land it here"
+  [[ -f src/core/search.ts ]] || fail "missing src/core/search.ts"
+  [[ -f src/core/companies.ts ]] || fail "missing src/core/companies.ts"
+  [[ -f src/migrations/003_companies.sql ]] || fail "missing companies migration"
+  [[ -f tests/search.test.ts ]] || fail "missing tests/search.test.ts"
+  grep -q 'CREATE TABLE companies' src/migrations/003_companies.sql \
+    || fail "companies migration does not create companies"
+  if grep -RInE 'search_jobs|list_board' src --include='*.ts' >/dev/null; then
+    fail "MCP is PR 6; do not land MCP tools here"
   fi
 fi
 
