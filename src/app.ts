@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { bootstrapKeyIfEmpty } from "./billing/keys.js";
 import { openDatabase, type HireApiDb } from "./db.js";
 import { healthRoutes } from "./http/routes/health.js";
+import { jobsRoutes } from "./http/routes/jobs.js";
 import { meRoutes } from "./http/routes/me.js";
 
 export type BuildAppOptions = {
@@ -29,5 +30,6 @@ export async function buildApp(
   }
   await app.register(healthRoutes);
   await app.register(meRoutes);
+  await app.register(jobsRoutes);
   return app;
 }
