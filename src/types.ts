@@ -88,6 +88,7 @@ export type Job = {
   applyUrl: string;
   postedAt: string | null;
   closed: boolean;
+  closedAt: string | null;
   fetchedAt: string;
 };
 

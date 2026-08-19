@@ -83,19 +83,39 @@ Accepts a Greenhouse/Ashby/Lever job URL.
   applyUrl: string
   postedAt: string | null
   closed: boolean
+  closedAt: string | null
   fetchedAt: string
 }
 ```
 
 Salary only if present. Do not estimate.
 
+A **known** job that 404s or is omitted from its board is **200** with `closed: true` and empty `descriptionMarkdown` — not HTTP 404. An unknown (never ingested) job URL that 404s is `404 job_closed`.
+
 ### 4.2 `GET /v1/boards/by-url`
 
-**Credits:** 1 per job returned (min 1 if board exists and has ≥1 open job). Empty open board: 0 credits, `data: []`.
+**Credits:** 1 per **open** job returned (min 1 if the board exists and has ≥1 open job). Empty open board: 0 credits, `data: []`.
 
-Query: `cursor`. Returns same job objects (description may be stub until detail fetch). v1 may return **summary jobs** (no full description) for list + `hasFullDescription: false`, and full text only on `by-url`. Document which.
+Query: `url` (required), `cursor` (optional). v1 returns the full open list in one page; `cursor` is accepted for forward-compat and unused when the board fits one page.
 
-Preferred v1: list returns summaries (title, location, applyUrl, id); full Markdown on `by-url` only. Cheaper and faster.
+`data` is **summary jobs** only:
+
+```ts
+{
+  id: string
+  title: string
+  company: { name: string, id: string | null }
+  locations: Array<{ raw: string, city: string | null, region: string | null, country: string | null }>
+  remote: boolean | null
+  applyUrl: string
+  closed: boolean
+  hasFullDescription: false
+}
+```
+
+No `descriptionMarkdown` on this list. Full Markdown is only on `GET /v1/jobs/by-url`. Closed jobs are omitted from `data` (they are persisted, not ghosted).
+
+Unknown vendor → `422 unsupported_board`. Board host matches but the board is gone → `404 board_not_found`. LinkedIn/Indeed → `422 source_disabled`.
 
 ### 4.3 `GET /v1/companies/{id}/jobs`
 
@@ -117,11 +137,12 @@ v1 search = our ingested boards, **not** a live Indeed scrape. Homepage must not
 
 When a known job URL 404s or the board omits it:
 
-- Record `closed: true`, `closedAt`.
-- `by-url` returns 404 `job_closed` **or** 200 with `closed: true` (pick **200 + closed** so monitors do not look like errors). Document it.
-- Do not keep serving old description as if open.
+- Persist `closed: true`, `closedAt`.
+- `GET /v1/jobs/by-url` returns **200** with `closed: true` and empty `descriptionMarkdown` (not `404 job_closed`) so monitors are not false-alerted as transport errors.
+- A URL we have never ingested that 404s is still `404 job_closed`.
+- Do not keep serving the old description as if the job were open.
 
-Cache open jobs 24h or until closed.
+Cache open **full** jobs 24h or until closed. Board lists are not cached, so a refresh can close omitted rows.
 
 ---
 

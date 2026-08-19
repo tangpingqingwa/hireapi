@@ -3,6 +3,7 @@ import type {
   EmploymentType,
   Job,
   JobLocation,
+  JobSummary,
   Salary,
   SalaryPeriod,
   Source,
@@ -627,8 +628,62 @@ export function buildJob(input: {
     applyUrl: input.applyUrl,
     postedAt: input.postedAt,
     closed: false,
+    closedAt: null,
     fetchedAt: input.fetchedAt,
   };
+}
+
+export function toJobSummary(job: {
+  id: string;
+  title: string;
+  company: Job["company"];
+  locations: JobLocation[];
+  remote: boolean | null;
+  applyUrl: string;
+  closed: boolean;
+}): JobSummary {
+  return {
+    id: job.id,
+    title: job.title,
+    company: job.company,
+    locations: job.locations,
+    remote: job.remote,
+    applyUrl: job.applyUrl,
+    closed: job.closed,
+    hasFullDescription: false,
+  };
+}
+
+export function resolveHref(base: string, href: string): string | null {
+  try {
+    return new URL(href, base).toString();
+  } catch {
+    return null;
+  }
+}
+
+/** Board token for a job or board URL on a known ATS host. */
+export function inferBoardUrl(jobOrBoardUrl: string): string | null {
+  const url = safeUrl(jobOrBoardUrl);
+  if (url === null) {
+    return null;
+  }
+  const host = url.hostname.toLowerCase().replace(/^www\./, "");
+  const parts = url.pathname.split("/").filter(Boolean);
+  if (host === "boards.greenhouse.io" || host === "job-boards.greenhouse.io") {
+    const forToken = url.searchParams.get("for");
+    if (forToken !== null && forToken !== "") {
+      return `${url.protocol}//${host}/${forToken}`;
+    }
+    if (parts[0] !== undefined && parts[0] !== "embed") {
+      return `${url.protocol}//${host}/${parts[0]}`;
+    }
+    return null;
+  }
+  if (host === "jobs.ashbyhq.com" && parts[0] !== undefined) {
+    return `${url.protocol}//${host}/${parts[0]}`;
+  }
+  return null;
 }
 
 export function parseIsoDate(value: unknown): string | null {

@@ -22,7 +22,9 @@ export const jobsRoutes: FastifyPluginAsync = async (app) => {
         if (key.credits < 1) {
           return sendErr(reply, "payment_required", "Not enough credits.");
         }
-        const job: Job = await getJobByUrl(request.query.url ?? "");
+        const job: Job = await getJobByUrl(request.query.url ?? "", {
+          db: request.server.db,
+        });
         const charged = tryChargeOrPaymentRequired(request.server.db, key, 1);
         if (!charged.ok) {
           return sendErr(reply, "payment_required", "Not enough credits.");

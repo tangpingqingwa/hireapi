@@ -58,6 +58,7 @@ export function tryChargeOrPaymentRequired(
   db: HireApiDb,
   key: Key,
   credits: number,
+  route = "/v1/jobs/by-url",
 ): { ok: true; key: Key } | { ok: false } {
   if (key.credits < credits) {
     return { ok: false };
@@ -66,7 +67,7 @@ export function tryChargeOrPaymentRequired(
     ok: true,
     key: chargeCredits(db, {
       key,
-      route: "/v1/jobs/by-url",
+      route,
       credits,
       cached: false,
     }),

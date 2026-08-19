@@ -89,6 +89,52 @@
       "file": "ashby/mercury-support.html",
       "vendor": "ashby",
       "kind": "job"
+    },
+    {
+      "url": "https://boards.greenhouse.io/stripedemo",
+      "file": "greenhouse/stripe-board.html",
+      "vendor": "greenhouse",
+      "kind": "board"
+    },
+    {
+      "url": "https://boards.greenhouse.io/emptydemo",
+      "file": "greenhouse/empty-board.html",
+      "vendor": "greenhouse",
+      "kind": "board"
+    },
+    {
+      "url": "https://boards.greenhouse.io/gonedemo",
+      "file": "greenhouse/gone-board.html",
+      "vendor": "greenhouse",
+      "kind": "board",
+      "status": 404
+    },
+    {
+      "url": "https://jobs.ashbyhq.com/lineardemo",
+      "file": "ashby/linear-board.html",
+      "vendor": "ashby",
+      "kind": "board"
+    },
+    {
+      "url": "https://jobs.ashbyhq.com/gonedemo",
+      "file": "greenhouse/gone-board.html",
+      "vendor": "ashby",
+      "kind": "board",
+      "status": 404
+    },
+    {
+      "url": "https://boards.greenhouse.io/stripedemo/jobs/4099999",
+      "file": "greenhouse/closed-job.html",
+      "vendor": "greenhouse",
+      "kind": "job",
+      "status": 404
+    },
+    {
+      "url": "https://jobs.ashbyhq.com/lineardemo/closed-role",
+      "file": "greenhouse/closed-job.html",
+      "vendor": "ashby",
+      "kind": "job",
+      "status": 404
     }
   ]
 }

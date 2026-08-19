@@ -43,6 +43,17 @@ if [[ -d src/adapters ]]; then
   fi
 fi
 
+if [[ -d src/core ]]; then
+  echo "== boards + closed lifecycle files =="
+  [[ -f src/core/boards.ts ]] || fail "missing src/core/boards.ts"
+  [[ -f src/migrations/002_jobs.sql ]] || fail "missing jobs table migration"
+  [[ -f tests/closed.test.ts ]] || fail "missing tests/closed.test.ts"
+  grep -q 'CREATE TABLE jobs' src/migrations/002_jobs.sql || fail "jobs migration does not create jobs"
+  if [[ -d src/core/search.ts ]] || [[ -f src/core/search.ts ]]; then
+    fail "search is PR 5; do not land it here"
+  fi
+fi
+
 if [[ -d tests/fixtures/boards ]]; then
   echo "== fixture catalog =="
   [[ -f tests/fixtures/boards/index.json ]] || fail "missing tests/fixtures/boards/index.json"
