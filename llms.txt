@@ -1,0 +1,83 @@
+# HireAPI
+
+> Parse any Greenhouse/Ashby/Lever board into one JSON schema. $19/mo.
+
+Public ATS job posts as JSON. Independent, not a job board. Apply links go to the source. We do not apply.
+
+Skill: apply links go to source; we do not apply; salary may be null; LinkedIn not available.
+
+SEO: `How to parse a Greenhouse board`, `Does Indeed still give API keys?`
+
+## URLs
+
+- REST: https://api.hireapi.dev
+- MCP Streamable HTTP: https://mcp.hireapi.dev/mcp
+- This file: /llms.txt
+- Server card: /.well-known/mcp/server-card.json
+
+## Auth
+
+```
+Authorization: Bearer hk_live_...
+Authorization: Bearer hk_test_...
+```
+
+Same key space for REST and MCP. No scopes. `hk_test_*` uses recorded fixtures and never hits a live ATS.
+
+## MCP tools
+
+### get_job
+
+Maps to `GET /v1/jobs/by-url`. **1 credit** on success.
+
+Arguments: `url` (required) — a Greenhouse, Ashby, or Lever job URL.
+
+`data` is the full job record (title, company, locations, remote, salary if listed, description Markdown, apply URL). Salary is `null` when the posting does not list an explicit range. A known job that 404s or is omitted from its board is `closed: true` with empty `descriptionMarkdown`, not a transport error.
+
+### list_board
+
+Maps to `GET /v1/boards/by-url`. **1 credit per open job** returned. Empty open board: **0 credits**, `data: []`.
+
+Arguments: `url` (required) — a Greenhouse, Ashby, or Lever board URL. Optional `cursor` (accepted, unused when the board fits one page).
+
+`data` is summary jobs only (`hasFullDescription: false`). No `descriptionMarkdown`. Closed jobs are omitted.
+
+### search_jobs
+
+Maps to `GET /v1/search`. **1 credit per hit**. Empty: **0 credits**, `data: []`.
+
+Arguments: optional `q` (title or company substring), `location`, `source` (`greenhouse` | `ashby` | `lever`), `remote` (`true` | `false`), `cursor`.
+
+Search is already-ingested open jobs only. It never fetches an ATS. LinkedIn and Indeed are `source_disabled`.
+
+## When not to call
+
+- Apply on behalf of a candidate, Easy Apply, or outreach — we do not apply; send the user to `applyUrl`.
+- LinkedIn or Indeed URLs / `source` — expect `source_disabled`, 0 credits.
+- Estimating salary from title or level — if the posting does not list one, `salary` is null.
+- Treating a closed known job as a 404 — `get_job` returns `closed: true` so monitors are not false-alerted.
+- Assuming search scrapes Indeed live — v1 search is ingested ATS jobs only.
+
+## Errors
+
+Same envelope as REST. `creditsCharged` is always 0 on error. Tool failures set `isError: true` and keep the REST error body in `structuredContent`.
+
+| code | HTTP | retryable |
+|---|---|---|
+| invalid_request | 400 | no |
+| unauthorized | 401 | no |
+| payment_required | 402 | no |
+| not_found | 404 | no |
+| job_closed | 404 | no |
+| board_not_found | 404 | no |
+| unsupported_board | 422 | no |
+| source_disabled | 422 | no |
+| rate_limited | 429 | yes |
+| upstream_blocked | 503 | yes |
+| internal | 500 | yes |
+
+Unknown vendor URL is `unsupported_board`. LinkedIn/Indeed is `source_disabled`. Failures cost **0 credits**.
+
+## Credits
+
+Free: 100 once. Monthly $19 / 3,000. Job by-url 1. Board 1 / open job. Search 1 / hit. Failures and empty search / empty open board cost 0.

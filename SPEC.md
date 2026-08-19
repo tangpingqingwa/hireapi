@@ -178,11 +178,19 @@ Top-up $8 / 1k.
 
 ## 8. MCP
 
-`get_job`, `list_board`, `search_jobs`.
+Streamable HTTP at `POST /mcp`. Same Bearer keys as REST. Tools wrap `core/*` 1:1:
+
+| tool | REST | credits |
+|---|---|---|
+| `get_job` | `GET /v1/jobs/by-url` | 1 |
+| `list_board` | `GET /v1/boards/by-url` | 1 / open job (0 if empty) |
+| `search_jobs` | `GET /v1/search` | 1 / hit (0 if empty) |
 
 Skill: apply links go to source; we do not apply; salary may be null; LinkedIn not available.
 
 SEO: `How to parse a Greenhouse board`, `Does Indeed still give API keys?`
+
+Public `GET /llms.txt` and `GET /.well-known/mcp/server-card.json`. Tool failures stay JSON-RPC HTTP 200 with `isError` and the REST error envelope in `structuredContent`. Auth failures stay the REST 401 envelope.
 
 ---
 
