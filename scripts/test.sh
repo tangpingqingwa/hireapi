@@ -33,12 +33,28 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   fi
 fi
 
-echo "== adapters stay fixture-only (no live ATS hosts) =="
+echo "== adapters default to fixtures; live ATS is env-gated =="
 if [[ -d src/adapters ]]; then
-  if grep -RInE '(^|[^[:alnum:]_])(fetch|axios|got)\s*\(' src/adapters src/core >/dev/null; then
-    fail "live HTTP client call in adapters/core (fixture transport only)"
-  fi
   [[ -f src/adapters/lever.ts ]] || fail "missing src/adapters/lever.ts"
+  [[ -f src/adapters/live.ts ]] || fail "missing src/adapters/live.ts"
+  grep -q 'HIREAPI_LIVE_ATS' src/adapters/transport.ts \
+    || fail "live ATS env gate missing from src/adapters/transport.ts"
+  grep -q 'isLiveAtsEnabled' src/adapters/index.ts \
+    || fail "src/adapters/index.ts must select live fetch via isLiveAtsEnabled"
+  grep -q 'createLiveFetchPage' src/adapters/index.ts \
+    || fail "src/adapters/index.ts must call createLiveFetchPage when gated on"
+  grep -q 'createFixtureFetchPage' src/adapters/index.ts \
+    || fail "src/adapters/index.ts must default to createFixtureFetchPage"
+  if grep -RInE '(^|[^[:alnum:]_])(fetch|axios|got)\s*\(' src/adapters/greenhouse.ts src/adapters/ashby.ts src/adapters/lever.ts src/adapters/parse.ts src/adapters/fixtures.ts src/core >/dev/null; then
+    fail "live HTTP client call outside src/adapters/live.ts"
+  fi
+  if grep -RInE 'linkedin\.com|indeed\.com' src/adapters/live.ts >/dev/null; then
+    fail "live adapter must not target LinkedIn or Indeed"
+  fi
+  if [[ -n "${HIREAPI_LIVE_ATS:-}" ]]; then
+    fail "HIREAPI_LIVE_ATS must be unset in CI / scripts/test.sh"
+  fi
+  [[ -f tests/live.test.ts ]] || fail "missing tests/live.test.ts"
 fi
 
 if [[ -d src/core ]]; then

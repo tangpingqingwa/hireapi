@@ -76,7 +76,7 @@ export function createFixtureFetchPage(index = loadFixtureIndex()): FetchPage {
       );
     }
     const status = match.status ?? 200;
-    const body = status === 404 && match.file === "" ? "" : readFileSync(fixtureBodyPath(match.file), "utf8");
+    const body = match.file === "" ? "" : readFileSync(fixtureBodyPath(match.file), "utf8");
     return {
       url: match.url,
       status,

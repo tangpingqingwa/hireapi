@@ -22,7 +22,7 @@ Authorization: Bearer hk_live_...
 Authorization: Bearer hk_test_...
 ```
 
-Same key space for REST and MCP. No scopes. `hk_test_*` uses recorded fixtures and never hits a live ATS.
+Same key space for REST and MCP. No scopes. Default adapters use recorded fixtures. Set `HIREAPI_LIVE_ATS=1` to fetch public Greenhouse, Ashby, or Lever pages. LinkedIn and Indeed stay disabled.
 
 ## MCP tools
 

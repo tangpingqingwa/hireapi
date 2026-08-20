@@ -185,6 +185,13 @@
       "vendor": "lever",
       "kind": "job",
       "status": 404
+    },
+    {
+      "url": "https://boards.greenhouse.io/stripedemo/jobs/4050303",
+      "file": "",
+      "vendor": "greenhouse",
+      "kind": "job",
+      "status": 503
     }
   ]
 }

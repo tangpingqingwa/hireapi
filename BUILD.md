@@ -83,4 +83,9 @@ Parse only explicit text (`$120,000–$140,000 a year`). If ambiguous → `salar
 - **Dependencies:** PR 5
 - **Tools:** get_job, list_board, search_jobs
 
+### PR 7: live ATS fetch (env-gated)
+- **Files:** `src/adapters/live.ts`, `src/adapters/transport.ts`, `src/adapters/index.ts`, tests/live.test.ts
+- **Dependencies:** PR 6
+- **Acceptance:** `HIREAPI_LIVE_ATS=1` GETs GH/Ashby/Lever board+job URLs; default remains fixtures; CI stays offline
+
 No LinkedIn files in this plan. Indeed = future isolated package.
