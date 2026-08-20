@@ -111,7 +111,7 @@ export function parseLeverJobHtml(html: string, url: string, fetchedAt: string):
   if (title === null || title === "") {
     throw new HireError("internal", "Lever job page is missing a title.");
   }
-  const company =
+  const companyRaw =
     firstMatch(html, [
       /<div\b[^>]*class=["'][^"']*main-header-text[^"']*["'][^>]*>([\s\S]*?)<\/div>/i,
       /<a\b[^>]*class=["'][^"']*main-header-logo[^"']*["'][^>]*>[\s\S]*?<img\b[^>]*alt=["']([^"']+)["']/i,
@@ -119,6 +119,7 @@ export function parseLeverJobHtml(html: string, url: string, fetchedAt: string):
     ]) ??
     organizationName(posting?.hiringOrganization) ??
     parseLeverCompany(url);
+  const company = companyRaw?.replace(/\s+logo$/i, "").trim() ?? null;
   if (company === null || company === "") {
     throw new HireError("internal", "Lever job page is missing a company.");
   }
@@ -251,7 +252,7 @@ function summaryFromLeverLink(
     return null;
   }
   const title = titleFromPostingLink(titleHtml);
-  if (title === "") {
+  if (title === "" || /^apply$/i.test(title)) {
     return null;
   }
   const applyUrl = canonicalLeverJobUrl(absolute);

@@ -85,12 +85,15 @@ export function parseGreenhouseJobHtml(html: string, url: string, fetchedAt: str
     firstMatch(html, [
       /<span\b[^>]*class=["'][^"']*company-name[^"']*["'][^>]*>([\s\S]*?)<\/span>/i,
       /<div\b[^>]*class=["'][^"']*company-name[^"']*["'][^>]*>([\s\S]*?)<\/div>/i,
+      /<title\b[^>]*>[\s\S]*?\s+at\s+([^<]+?)\s*<\/title>/i,
     ]) ??
-    organizationName(posting?.hiringOrganization);
+    organizationName(posting?.hiringOrganization) ??
+    greenhouseBoardToken(url);
   if (company === null || company === "") {
     throw new HireError("internal", "Greenhouse job page is missing a company.");
   }
   const locationRaw = firstMatch(html, [
+    /<div\b[^>]*class=["'][^"']*job__location[^"']*["'][^>]*>([\s\S]*?)<\/div>/i,
     /<div\b[^>]*class=["'][^"']*location[^"']*["'][^>]*>([\s\S]*?)<\/div>/i,
     /<span\b[^>]*class=["'][^"']*location[^"']*["'][^>]*>([\s\S]*?)<\/span>/i,
   ]);
@@ -103,6 +106,7 @@ export function parseGreenhouseJobHtml(html: string, url: string, fetchedAt: str
   const descriptionHtml =
     innerHtml(html, { id: "content" }) ??
     innerHtml(html, { className: "content" }) ??
+    innerHtml(html, { className: "job__description" }) ??
     (typeof posting?.description === "string" ? posting.description : "");
   const salary =
     findSalaryInText(stripTags(descriptionHtml)) ??
@@ -142,6 +146,10 @@ export function createGreenhouseAdapter(fetchPage: FetchPage): BoardAdapter {
       }
       if (page.status >= 400) {
         throw new HireError("upstream_blocked", `Greenhouse returned HTTP ${page.status}.`);
+      }
+      // Live GH 404s often 302 to the board (`?error=true`) instead of HTTP 404.
+      if (!matchGreenhouseJobUrl(page.url)) {
+        throw new HireError("job_closed", "Greenhouse job is gone.");
       }
       return parseGreenhouseJobHtml(page.body, page.url, new Date().toISOString());
     },
@@ -184,7 +192,12 @@ function greenhouseCompanyName(html: string, boardUrl: string): string {
       /<title\b[^>]*>([\s\S]*?)<\/title>/i,
     ]);
   if (fromPage !== null && fromPage !== "") {
-    return fromPage.replace(/^at\s+/i, "").replace(/\s+jobs$/i, "").trim();
+    return fromPage
+      .replace(/^current openings at\s+/i, "")
+      .replace(/^jobs at\s+/i, "")
+      .replace(/^at\s+/i, "")
+      .replace(/\s+jobs$/i, "")
+      .trim();
   }
   return greenhouseBoardToken(boardUrl) ?? "Greenhouse";
 }
@@ -212,17 +225,26 @@ function summaryFromGreenhouseLink(
   if (sourceJobId === null) {
     return null;
   }
-  const title = stripTags(titleHtml).trim();
+  const title =
+    firstMatch(titleHtml, [
+      /<p\b[^>]*class=["'][^"']*body--medium[^"']*["'][^>]*>([\s\S]*?)<\/p>/i,
+      /<h1\b[^>]*>([\s\S]*?)<\/h1>/i,
+    ]) ?? stripTags(titleHtml).trim();
   if (title === "") {
     return null;
   }
+  const locationFromLink = firstMatch(titleHtml, [
+    /<p\b[^>]*class=["'][^"']*body--metadata[^"']*["'][^>]*>([\s\S]*?)<\/p>/i,
+    /<div\b[^>]*class=["'][^"']*job__location[^"']*["'][^>]*>([\s\S]*?)<\/div>/i,
+  ]);
+  const location = locationRaw ?? locationFromLink;
   const applyUrl = normalizeUrl(absolute) ?? absolute;
   return toJobSummary({
     id: makeJobId("greenhouse", sourceJobId),
     title,
     company: { name: companyName, id: null },
-    locations: locationRaw !== null && locationRaw !== "" ? [parseLocation(locationRaw)] : [],
-    remote: inferRemoteFromParts(locationRaw, "", null),
+    locations: location !== null && location !== "" ? [parseLocation(location)] : [],
+    remote: inferRemoteFromParts(location, "", null),
     applyUrl,
     closed: false,
   });
@@ -242,7 +264,7 @@ export function parseGreenhouseBoardHtml(html: string, boardUrl: string): JobSum
   };
 
   const blockRe =
-    /<div\b[^>]*class=["'][^"']*\b(?:opening|job-post)\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi;
+    /<(?:div|tr)\b[^>]*class=["'][^"']*\b(?:opening|job-post)\b[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|tr)>/gi;
   let block: RegExpExecArray | null;
   while ((block = blockRe.exec(html)) !== null) {
     const link = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i.exec(block[1]);

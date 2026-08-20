@@ -74,26 +74,64 @@ function ashbyCompanyFromUrl(url: string): string | null {
   }
 }
 
+function extractJsonObject(raw: string): Record<string, unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return asRecord(parsed);
+  } catch {
+    return null;
+  }
+}
+
 function extractAshbyBootstrap(html: string): Record<string, unknown> | null {
-  const patterns = [
-    /<script\b[^>]*id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i,
-    /window\.__appData\s*=\s*({[\s\S]*?})\s*;?\s*<\/script>/i,
-    /<script\b[^>]*data-ashby=["']job["'][^>]*>([\s\S]*?)<\/script>/i,
-  ];
-  for (const pattern of patterns) {
-    const match = pattern.exec(html);
-    if (match === null) {
-      continue;
+  const next = /<script\b[^>]*id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i.exec(html);
+  if (next !== null) {
+    const rec = extractJsonObject(next[1]);
+    if (rec !== null) {
+      return rec;
     }
-    try {
-      const parsed: unknown = JSON.parse(match[1]);
-      const rec = asRecord(parsed);
-      if (rec !== null) {
-        return rec;
+  }
+  const appData = /window\.__appData\s*=\s*/i.exec(html);
+  if (appData !== null) {
+    const start = appData.index + appData[0].length;
+    if (html[start] === "{") {
+      let depth = 0;
+      let inString = false;
+      let escape = false;
+      for (let i = start; i < html.length; i += 1) {
+        const ch = html[i];
+        if (inString) {
+          if (escape) {
+            escape = false;
+          } else if (ch === "\\") {
+            escape = true;
+          } else if (ch === '"') {
+            inString = false;
+          }
+          continue;
+        }
+        if (ch === '"') {
+          inString = true;
+          continue;
+        }
+        if (ch === "{") {
+          depth += 1;
+        } else if (ch === "}") {
+          depth -= 1;
+          if (depth === 0) {
+            const rec = extractJsonObject(html.slice(start, i + 1));
+            if (rec !== null) {
+              return rec;
+            }
+            break;
+          }
+        }
       }
-    } catch {
-      // try next
     }
+  }
+  const tagged = /<script\b[^>]*data-ashby=["']job["'][^>]*>([\s\S]*?)<\/script>/i.exec(html);
+  if (tagged !== null) {
+    return extractJsonObject(tagged[1]);
   }
   return null;
 }
@@ -134,7 +172,8 @@ export function parseAshbyJobHtml(html: string, url: string, fetchedAt: string):
     asString(jobRec?.title) ??
     (typeof posting?.title === "string" ? posting.title : null);
   if (title === null || title === "") {
-    throw new HireError("internal", "Ashby job page is missing a title.");
+    // Live Ashby serves a 200 SPA shell for unknown slugs (no JobPosting).
+    throw new HireError("job_closed", "Ashby job is gone.");
   }
   const company =
     firstMatch(html, [
@@ -210,6 +249,9 @@ export function createAshbyAdapter(fetchPage: FetchPage): BoardAdapter {
       }
       if (page.status >= 400) {
         throw new HireError("upstream_blocked", `Ashby returned HTTP ${page.status}.`);
+      }
+      if (!matchAshbyJobUrl(page.url)) {
+        throw new HireError("job_closed", "Ashby job is gone.");
       }
       return parseAshbyJobHtml(page.body, page.url, new Date().toISOString());
     },
@@ -299,14 +341,24 @@ export function parseAshbyBoardHtml(html: string, boardUrl: string): JobSummary[
       continue;
     }
     const locationRaw = asString(posting.locationName) ?? asString(posting.location);
-    const remoteFlag = posting.isRemote === true ? true : posting.isRemote === false ? false : null;
+    const workplace = asString(posting.workplaceType);
+    const remoteFlag =
+      posting.isRemote === true || workplace === "Remote"
+        ? true
+        : posting.isRemote === false
+          ? false
+          : null;
     push(
       toJobSummary({
         id: makeJobId("ashby", slug),
         title,
         company: { name: companyName, id: null },
         locations: locationRaw !== null ? [parseLocation(locationRaw)] : [],
-        remote: inferRemoteFromParts(locationRaw, "", remoteFlag),
+        remote: inferRemoteFromParts(
+          [locationRaw, workplace].filter((part) => part !== null).join(" "),
+          "",
+          remoteFlag,
+        ),
         applyUrl: normalizeUrl(apply) ?? apply,
         closed: false,
       }),

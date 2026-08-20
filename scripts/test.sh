@@ -54,7 +54,15 @@ if [[ -d src/adapters ]]; then
   if [[ -n "${HIREAPI_LIVE_ATS:-}" ]]; then
     fail "HIREAPI_LIVE_ATS must be unset in CI / scripts/test.sh"
   fi
+  if [[ -n "${HIREAPI_SMOKE_FORCE_CLOSED:-}" ]]; then
+    fail "HIREAPI_SMOKE_FORCE_CLOSED must be unset in CI / scripts/test.sh"
+  fi
   [[ -f tests/live.test.ts ]] || fail "missing tests/live.test.ts"
+  grep -q 'HIREAPI_SMOKE_FORCE_CLOSED' src/adapters/transport.ts \
+    || fail "smoke force-closed helper missing from transport"
+  if grep -E 'scripts/live-smoke|bash[[:space:]]+scripts/live-smoke' .github/workflows/ci.yml >/dev/null; then
+    fail "CI must not invoke scripts/live-smoke.sh"
+  fi
 fi
 
 if [[ -d src/core ]]; then
