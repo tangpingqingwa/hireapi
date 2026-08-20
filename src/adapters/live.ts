@@ -72,6 +72,9 @@ export function createLiveFetchPage(options: LiveFetchPageOptions = {}): FetchPa
           },
         });
         if (response.status < 300 || response.status >= 400) {
+          if (response.status === 404) {
+            return { url: current, status: 404, body: "" };
+          }
           break;
         }
         const location = response.headers.get("location");

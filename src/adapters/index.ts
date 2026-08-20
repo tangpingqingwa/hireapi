@@ -4,13 +4,15 @@ import { createFixtureFetchPage } from "./fixtures.js";
 import { createGreenhouseAdapter } from "./greenhouse.js";
 import { createLeverAdapter } from "./lever.js";
 import { createLiveFetchPage } from "./live.js";
-import { isLiveAtsEnabled, type FetchPage } from "./transport.js";
+import {
+  isLiveAtsEnabled,
+  wrapForceClosedAfterFirstFetch,
+  type FetchPage,
+} from "./transport.js";
 
 export function createFetchPage(env: NodeJS.ProcessEnv = process.env): FetchPage {
-  if (isLiveAtsEnabled(env)) {
-    return createLiveFetchPage();
-  }
-  return createFixtureFetchPage();
+  const inner = isLiveAtsEnabled(env) ? createLiveFetchPage() : createFixtureFetchPage();
+  return wrapForceClosedAfterFirstFetch(inner, env.HIREAPI_SMOKE_FORCE_CLOSED);
 }
 
 export function createAdapters(fetchPage: FetchPage = createFetchPage()): BoardAdapter[] {

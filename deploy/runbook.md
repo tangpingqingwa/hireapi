@@ -53,3 +53,5 @@ curl -fsS -H "Authorization: Bearer $HIREAPI_BOOTSTRAP_KEY" \
 5. Leave the flag unset in CI. `scripts/test.sh` fails if it is set.
 
 Roll back: set `HIREAPI_LIVE_ATS=0` (or unset) and recreate. Do not run live ATS from CI.
+
+Local soak (not CI): `bash scripts/live-smoke.sh`. See [docs/live-smoke.md](../docs/live-smoke.md).

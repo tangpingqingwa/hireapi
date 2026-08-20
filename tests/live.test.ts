@@ -3,7 +3,11 @@ import { after, test } from "node:test";
 import { createAdapters, createFetchPage } from "../src/adapters/index.js";
 import { createLiveFetchPage } from "../src/adapters/live.js";
 import { parseSalary } from "../src/adapters/parse.js";
-import { isLiveAtsEnabled } from "../src/adapters/transport.js";
+import {
+  isLiveAtsEnabled,
+  wrapForceClosedAfterFirstFetch,
+  type FetchPage,
+} from "../src/adapters/transport.js";
 import { buildApp } from "../src/app.js";
 import { loadConfig } from "../src/config.js";
 import { getBoardByUrl } from "../src/core/boards.js";
@@ -116,6 +120,25 @@ test("live fetch maps abort/timeout to upstream_blocked", async () => {
   });
 });
 
+test("wrapForceClosedAfterFirstFetch 404s the target only after the first GET", async () => {
+  let hits = 0;
+  const inner: FetchPage = async (url) => {
+    hits += 1;
+    return { url, status: 200, body: "ok" };
+  };
+  const fetchPage = wrapForceClosedAfterFirstFetch(
+    inner,
+    "https://jobs.ashbyhq.com/linear/1bfdcabe-aa5f-4999-9a6d-b8a824dd779b",
+  );
+  const first = await fetchPage("https://jobs.ashbyhq.com/linear/1bfdcabe-aa5f-4999-9a6d-b8a824dd779b");
+  const second = await fetchPage("https://jobs.ashbyhq.com/linear/1bfdcabe-aa5f-4999-9a6d-b8a824dd779b");
+  const other = await fetchPage("https://jobs.ashbyhq.com/linear");
+  assert.equal(first.status, 200);
+  assert.equal(second.status, 404);
+  assert.equal(other.status, 200);
+  assert.equal(hits, 2);
+});
+
 test("live Greenhouse job 404 is job_closed; known 404 is 200 closed:true", async () => {
   const fetchPage = createLiveFetchPage({
     fetchImpl: async () => htmlResponse(404, ""),
@@ -149,6 +172,85 @@ test("live Greenhouse job 404 is job_closed; known 404 is 200 closed:true", asyn
   assert.equal(closed.closed, true);
   assert.equal(closed.descriptionMarkdown, "");
   assert.ok(closed.closedAt !== null);
+});
+
+test("live-shaped Greenhouse job+board HTML parses without inventing salary", async () => {
+  const jobHtml =
+    `<!DOCTYPE html><html><head><title>Job Application for Director of Engineering at Discord</title></head>` +
+    `<body><main class="job-post"><div class="job__title"><h1>Director of Engineering</h1>` +
+    `<div class="job__location">San Francisco Bay Area</div></div>` +
+    `<div class="job__description body"><p>Lead Safety engineering. Competitive pay.</p></div></main></body></html>`;
+  const boardHtml =
+    `<!DOCTYPE html><html><head><title>Jobs at Discord</title></head><body>` +
+    `<h1>Current openings at Discord</h1>` +
+    `<tr class="job-post"><td><a href="https://job-boards.greenhouse.io/discord/jobs/8571766002">` +
+    `<p class="body body--medium">Director of Engineering</p>` +
+    `<p class="body body--metadata">San Francisco Bay Area</p></a></td></tr></body></html>`;
+  const fetchPage = createLiveFetchPage({
+    fetchImpl: async (url) => {
+      if (url.includes("/jobs/")) {
+        return htmlResponse(200, jobHtml);
+      }
+      return htmlResponse(200, boardHtml);
+    },
+  });
+  const adapters = createAdapters(fetchPage);
+  const db = openDatabase(":memory:");
+  after(() => db.close());
+  const job = await getJobByUrl("https://job-boards.greenhouse.io/discord/jobs/8571766002", adapters);
+  assert.equal(job.source, "greenhouse");
+  assert.equal(job.title, "Director of Engineering");
+  assert.equal(job.company.name, "Discord");
+  assert.equal(job.salary, null);
+  assert.match(job.descriptionMarkdown, /Lead Safety engineering/);
+  assert.equal(job.descriptionMarkdown.includes("<div>"), false);
+  const board = await getBoardByUrl("https://job-boards.greenhouse.io/discord", db, { adapters });
+  assert.equal(board.jobs.length, 1);
+  assert.equal(board.jobs[0]?.title, "Director of Engineering");
+  assert.equal(board.jobs[0]?.hasFullDescription, false);
+});
+
+test("live-shaped Ashby __appData board lists jobs; empty SPA shell is job_closed", async () => {
+  const boardHtml =
+    `<!DOCTYPE html><html><head><title>Linear Jobs</title></head><body>` +
+    `<script>window.__appData = {"organization":{"name":"Linear"},` +
+    `"jobBoard":{"jobPostings":[{"id":"1bfdcabe-aa5f-4999-9a6d-b8a824dd779b",` +
+    `"title":"Account Executive, Enterprise","locationName":"North America",` +
+    `"workplaceType":"Remote"}]}};</script></body></html>`;
+  const fetchPage = createLiveFetchPage({
+    fetchImpl: async (url) => {
+      if (url.endsWith("/linear")) {
+        return htmlResponse(200, boardHtml);
+      }
+      return htmlResponse(200, "<!DOCTYPE html><html><head><title>Jobs</title></head><body></body></html>");
+    },
+  });
+  const adapters = createAdapters(fetchPage);
+  const db = openDatabase(":memory:");
+  after(() => db.close());
+  const board = await getBoardByUrl("https://jobs.ashbyhq.com/linear", db, { adapters });
+  assert.ok(board.jobs.length >= 1);
+  assert.equal(board.jobs[0]?.title, "Account Executive, Enterprise");
+  assert.equal(board.jobs[0]?.remote, true);
+  await assert.rejects(
+    () => getJobByUrl("https://jobs.ashbyhq.com/linear/this-role-does-not-exist-xyz", adapters),
+    { name: "HireError", code: "job_closed" },
+  );
+});
+
+test("Greenhouse live 404 redirect to the board is job_closed, not a parse of the board HTML", async () => {
+  const fetchPage = createLiveFetchPage({
+    fetchImpl: async (url) => {
+      if (url.includes("/jobs/1")) {
+        return htmlResponse(302, "", { location: "https://job-boards.greenhouse.io/discord?error=true" });
+      }
+      return htmlResponse(200, "<html><body><h1>Current openings at Discord</h1></body></html>");
+    },
+  });
+  await assert.rejects(
+    () => getJobByUrl("https://job-boards.greenhouse.io/discord/jobs/1", createAdapters(fetchPage)),
+    { name: "HireError", code: "job_closed" },
+  );
 });
 
 test("live board 404 is board_not_found; unknown vendor stays unsupported_board", async () => {

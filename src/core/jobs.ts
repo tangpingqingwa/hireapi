@@ -1,4 +1,5 @@
-import { inferBoardUrl } from "../adapters/parse.js";
+import { inferBoardUrl, normalizeUrl } from "../adapters/parse.js";
+import { SMOKE_FORCE_CLOSED_ENV } from "../adapters/transport.js";
 import type { HireApiDb } from "../db.js";
 import type { BoardAdapter, Job } from "../types.js";
 import { ensureCompany } from "./companies.js";
@@ -43,7 +44,11 @@ export async function getJobByUrl(
     );
   }
   const db = options.db;
-  if (db !== undefined) {
+  const smokeClosed = (process.env[SMOKE_FORCE_CLOSED_ENV] ?? "").trim();
+  const skipFreshCache =
+    smokeClosed !== "" &&
+    (normalizeUrl(trimmed) ?? trimmed) === (normalizeUrl(smokeClosed) ?? smokeClosed);
+  if (db !== undefined && !skipFreshCache) {
     const stored = findStoredJob(db, trimmed);
     if (stored !== null && isFreshOpenFullJob(stored, now)) {
       return stored.job;
