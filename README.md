@@ -49,6 +49,7 @@ Ship Greenhouse + Ashby + Lever first — they are easier and legally cleaner th
 - Descriptions as Markdown, no HTML junk
 - LinkedIn (if ever) isolated so a ban does not take ATS down
 - Failures 0 credits
+- Default adapters read snapshot HTML. Set `HIREAPI_LIVE_ATS=1` to GET public Greenhouse, Ashby, or Lever board/job URLs. Off in CI. Never invent salary.
 
 ## Business model
 

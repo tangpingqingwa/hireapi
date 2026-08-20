@@ -1,3 +1,5 @@
+import { isLiveAtsEnabled } from "./adapters/transport.js";
+
 const DEFAULT_PORT = 3000;
 const DEFAULT_DATABASE_PATH = "./data/hireapi.sqlite";
 
@@ -6,6 +8,7 @@ export type AppConfig = {
   databasePath: string;
   bootstrapKey: string | undefined;
   nodeEnv: string;
+  liveAts: boolean;
 };
 
 export function parseListenPort(value = process.env.PORT): number {
@@ -35,5 +38,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     bootstrapKey:
       bootstrapKey !== undefined && bootstrapKey !== "" ? bootstrapKey : undefined,
     nodeEnv,
+    liveAts: isLiveAtsEnabled(env),
   };
 }

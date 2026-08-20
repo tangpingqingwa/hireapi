@@ -174,6 +174,8 @@ Top-up $8 / 1k.
 
 20 real public boards (mix of GH / Ashby / Lever). Snapshot HTML. Parser unit tests. A board redesign fails CI.
 
+Default adapters load those snapshots. Set `HIREAPI_LIVE_ATS=1` to GET public Greenhouse, Ashby, or Lever board/job URLs instead. Live fetch is off in CI. Transport failures are `upstream_blocked` and charge 0 credits. A known job that 404s is still **200** `closed: true`. Salary is never estimated.
+
 ---
 
 ## 8. MCP

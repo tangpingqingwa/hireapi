@@ -48,6 +48,7 @@ test("loadConfig requires HIREAPI_DATABASE in production", () => {
   });
   assert.equal(config.databasePath, "/tmp/hireapi.sqlite");
   assert.equal(config.bootstrapKey, "hk_test_dev");
+  assert.equal(config.liveAts, false);
 });
 
 test("createKey stores a hash and lookupKey finds the row", () => {
