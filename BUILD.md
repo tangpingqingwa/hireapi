@@ -88,4 +88,9 @@ Parse only explicit text (`$120,000–$140,000 a year`). If ambiguous → `salar
 - **Dependencies:** PR 6
 - **Acceptance:** `HIREAPI_LIVE_ATS=1` GETs GH/Ashby/Lever board+job URLs; default remains fixtures; CI stays offline
 
+### PR 8: Dockerfile + one-VPS runbook
+- **Files:** `Dockerfile`, `.env.example`, `deploy/runbook.md`
+- **Dependencies:** PR 7
+- **Acceptance:** Node 22, non-root, listen on `$PORT`; live ATS stays off until the operator sets `HIREAPI_LIVE_ATS`; CI stays offline
+
 No LinkedIn files in this plan. Indeed = future isolated package.

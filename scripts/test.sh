@@ -107,6 +107,34 @@ if [[ -d tests/fixtures/boards ]]; then
   [[ "$lever_n" -ge 5 ]] || fail "expected ≥5 Lever fixtures, got $lever_n"
 fi
 
+echo "== deploy artifacts (Dockerfile + runbook) =="
+[[ -f Dockerfile ]] || fail "missing Dockerfile"
+[[ -f .env.example ]] || fail "missing .env.example"
+[[ -f deploy/runbook.md ]] || fail "missing deploy/runbook.md"
+grep -q 'node:22' Dockerfile || fail "Dockerfile must use Node 22"
+grep -qE '^USER[[:space:]]+node$' Dockerfile || fail "Dockerfile must run as non-root USER node"
+grep -q 'PORT' Dockerfile || fail "Dockerfile must honor PORT"
+grep -q 'src/server.ts' Dockerfile || fail "Dockerfile must start src/server.ts"
+if grep -E 'HIREAPI_LIVE_ATS[[:space:]]*=[[:space:]]*(1|true|yes|on)' Dockerfile >/dev/null; then
+  fail "Dockerfile must not enable live ATS"
+fi
+grep -q 'HIREAPI_LIVE_ATS' .env.example || fail ".env.example missing HIREAPI_LIVE_ATS"
+grep -q 'HIREAPI_DATABASE' .env.example || fail ".env.example missing HIREAPI_DATABASE"
+grep -q 'HIREAPI_BOOTSTRAP_KEY' .env.example || fail ".env.example missing HIREAPI_BOOTSTRAP_KEY"
+if grep -E '^[[:space:]]*HIREAPI_LIVE_ATS=1[[:space:]]*$' .env.example >/dev/null; then
+  fail ".env.example must not default live ATS on"
+fi
+if grep -E '^[[:space:]]*HIREAPI_BOOTSTRAP_KEY=hk_(live|test)_' .env.example >/dev/null; then
+  fail ".env.example must not ship a real bootstrap key"
+fi
+grep -q '/healthz' deploy/runbook.md || fail "runbook missing /healthz"
+grep -q 'HIREAPI_LIVE_ATS' deploy/runbook.md || fail "runbook missing live ATS enablement"
+grep -q 'docker build' deploy/runbook.md || fail "runbook missing docker build"
+grep -q 'docker run' deploy/runbook.md || fail "runbook missing docker run"
+if grep -RInE 'linkedin\.com|indeed\.com' Dockerfile deploy .env.example >/dev/null 2>&1; then
+  fail "deploy artifacts must not target LinkedIn or Indeed"
+fi
+
 echo "== markdown is UTF-8 text =="
 file -b --mime-encoding README.md SPEC.md CONTRIBUTING.md llms.txt | grep -qiE 'utf-8|us-ascii' \
   || fail "docs are not UTF-8/ASCII"

@@ -78,3 +78,7 @@ A personal “companies I would join” list refreshes daily through HireAPI. If
 ## Risk
 
 LinkedIn is the lawsuit magnet — keep it off the marketing site until the rest is a business. Customer terms: read-only, no scraping credentials, no spam. When a board 404s, mark the job closed, do not keep serving a ghost.
+
+## One-box deploy
+
+`Dockerfile` + [`.env.example`](./.env.example). Operator steps: [deploy/runbook.md](./deploy/runbook.md). Live ATS stays off until `HIREAPI_LIVE_ATS=1`.
